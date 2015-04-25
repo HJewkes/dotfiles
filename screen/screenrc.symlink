@@ -1,0 +1,97 @@
+defflow off
+deflog on
+hardcopy_append on
+logfile     ~/.backups/.screen/screen_%y-%m-%d_%n
+hardcopydir ~/.backups/.screen
+bufferfile  ~/.backups/.screen/.screen_buffer
+
+zombie cr
+autodetach on
+defnonblock 5    # flaky/slow ssh lines
+idle 360 eval "screen nice -n 19 /opt/s/cmatrix" "idle 360000 pow_detach"
+pow_detach_msg "Ended"
+pow_detach_msg "Screen session of $LOGNAME $:cr:$:nl:ended."
+pow_detach_msg "Screen session of \$LOGNAME \$:cr:\$:nl:ended."
+
+term xterm-256color
+defshell -$SHELL
+shell -$SHELL    # use the default shell
+shelltitle "$ | terminal"
+silencewait 5
+
+#===================================================================#
+# Appearance
+#===================================================================#
+caption always "%{wk} %-w%{bw} %n %t %{-}%+w %="
+#-------------------------------------------------------------------#
+hardstatus alwayslastline "%{wk} [$USER@%H] %= %Y.%m.%d %c:%s "
+#-------------------------------------------------------------------#
+defbce on                                     # clear w/ curr bg
+altscreen on                                  # clear after vi/ed
+startup_message off                           # no splash screen
+attrcolor b ".I"                              # use bold colors
+#===================================================================#
+
+#===================================================================#
+# Key Bindings
+#===================================================================#
+escape  ^\\                                   # Ctrl-\
+#---------------------------------------------#---------------------#
+bindkey ^[ quit                               # Esc : end session
+bindkey ^[[11~ windowlist -b                  # F1  : list screens
+bindkey ^[[12~ select                         # F2  : goto screen
+bindkey ^[[13~ prev                           # F3  : prev screen
+bindkey ^[[14~ next                           # F4  : next screen
+bindkey ^[[15~ split                          # F5  : split window
+bindkey ^[[17~ only                           # F6  : one window
+bindkey ^[[18~ focus down                     # F7  : window down
+bindkey ^[[19~ focus up                       # F8  : window up
+bindkey ^[[20~ screen                         # F9  : new screen
+bindkey ^[[21~ kill                           # F10 : close screen
+bindkey ^[[23~ colon                          # F11 : type cmd
+bindkey ^[[24~ command                        # F12 : hotkeys
+#---------------------------------------------#---------------------#
+bind = resize =                               # F12,= : equal size
+bind + resize +1                              # F12,+ : bigger
+bind - resize -1                              # F12,- : smaller
+bind _ resize max                             # F12,_ : max size
+#===================================================================#
+
+#===================================================================#
+# Scrolling & Copy/Paste
+#===================================================================#
+defscrollback 100000                          # Scroll 30000 lines
+#---------------------------------------------#---------------------#
+bindkey  ^[[2~ paste .                        # INS : paste
+bindkey  ^[[3~ register . ''                  # DEL : clear paste
+bindkey  ^[[G  copy                           #   #Pad-5 : copy mode
+#---------------------------------------------#---------------------#
+markkeys ?=*                                  # *   : search
+markkeys ^d=+                                 # +   : pg-dn
+markkeys ^u=-                                 # -   : pg-up
+#===================================================================#
+
+#===================================================================#
+# Default Screens
+#===================================================================#
+#screen -t DA02 0 ssh loaddeva02              # hjewkes@loaddeva02
+#screen -t LA02 1 ssh lsloada02               # hjewkes@lsloada02
+#screen -t LB02 2 ssh lsloadb02               # hjewkes@lsloadb02
+#screen -t FDSA 3 ssh fdsa.factset.com        # hjewkes@FDSA
+#screen -t FDSB 4 ssh fdsb.factset.com        # hjewkes@FDSB
+#screen -t FDSC 5 ssh fdsc.factset.com        # hjewkes@FDSC
+#---------------------------------------------#---------------------#
+select 0                                      # starting screen
+#===================================================================#
+
+#===================================================================#
+# Notifications
+#===================================================================#
+sorendition "= bw"                            # message appearance
+msgwait 1                                     # short messages
+vbell on                                      # notify all screens
+defmonitor on                                 # watch all screens
+vbell_msg "^G!"                               # curr screen bell
+bell_msg  "^G[%c] %n%f %t"                    # other screen bell
+activity  "^G[%c] %n%f %t"                    # other screen act
+#===================================================================#
