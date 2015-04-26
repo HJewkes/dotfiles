@@ -6,8 +6,9 @@ fpath=($ZSH/functions $fpath)
 autoload -U $ZSH/functions/*(:t)
 
 HISTFILE=~/.zsh_history
-HISTSIZE=10000
-SAVEHIST=10000
+HISTSIZE=100000
+SAVEHIST=100000
+HIST_STAMPS="yyyy-mm-dd"
 
 setopt NO_BG_NICE # don't nice background tasks
 setopt NO_HUP
@@ -26,6 +27,9 @@ setopt APPEND_HISTORY # adds history
 setopt INC_APPEND_HISTORY SHARE_HISTORY  # adds history incrementally and share it across sessions
 setopt HIST_IGNORE_ALL_DUPS  # don't record dupes in history
 setopt HIST_REDUCE_BLANKS
+
+REPORTTIME=1.000
+TIMEFMT="user: %U | system: %S | cpu: %P | total: %*E"
 
 # don't expand aliases _before_ completion has finished
 #   like: git comm-[tab]

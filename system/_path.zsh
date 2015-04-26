@@ -1,4 +1,15 @@
-export PATH="/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/opt/coreutils/libexec/gnubin:/Users/hjewkes/projects/devenv/bin:$ZSH/bin:$PATH"
-export MANPATH="/usr/local/man:/usr/local/git/man:$MANPATH"
+export PATH=$PATH:/bin
+export PATH=$PATH:/sbin
+export PATH=$PATH:/usr/bin
+export PATH=$PATH:/usr/sbin
+export PATH=$PATH:/usr/local/bin
+export PATH=$PATH:/usr/local/opt/coreutils/libexec/gnubin
+export PATH=$PATH:/Users/hjewkes/projects/devenv/bin
+export PATH=$PATH:$ZSH/bin
+
+export MANPATH=$MANPATH:/usr/local/man
+export MANPATH=$MANPATH:/usr/local/git/man
+export MANPATH=$MANPATH:$MANPATH
+
 # Ensure path arrays do not contain duplicates.
-typeset -gU cdpath fpath mailpath path MANPATH
+typeset -gU CDPATH FPATH MAILPATH PATH MANPATH

@@ -1,2 +1,3 @@
 alias reload!='. ~/.zshrc'
-alias dotfiles='cd ~/.dotfiles'
+alias dotfiles='e ~/.dotfiles/'
+alias profile='subl ~/.dotfiles/zsh/other.zsh; source ~/.zshrc'
