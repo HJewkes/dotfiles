@@ -1,5 +1,7 @@
-# Z Command
-. ~/gitsrc/z/z.sh
+#####################################################
+# z
+# https://github.com/rupa/z/pulls
+. `brew --prefix`/etc/profile.d/z.sh
 
 #####################################################
 # Syntax Highlighting

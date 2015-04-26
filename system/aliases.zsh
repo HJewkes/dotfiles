@@ -3,7 +3,7 @@
 #   `brew install coreutils`
 if $(gls &>/dev/null)
 then
-  alias ls="gls -F --color"
+  alias ls='gls --color -ah --group-directories-first' 
   alias l="gls -lAh --color"
   alias ll="gls -l --color"
   alias la='gls -A --color'
@@ -38,7 +38,6 @@ alias rw-='chmod 600'
 alias rwx='chmod 700'
 alias r--='chmod 644'
 alias r-x='chmod 755'
-
-alias ls='ls --color -ah --group-directories-first'  
+ 
 alias cls='clear; ls'
 alias logout='cls && logout'
