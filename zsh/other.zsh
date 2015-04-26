@@ -3,7 +3,6 @@
 ENABLE_CORRECTION="true"
 COMPLETION_WAITING_DOTS="true"
 HIST_STAMPS="yyyy-mm-dd"
-export LANG=en_US.UTF-8
 export ARCHFLAGS="-arch x86_64"
 REPORTTIME=1.000
 TIMEFMT="user: %U | system: %S | cpu: %P | total: %*E"
@@ -107,8 +106,9 @@ amp() {
   ambr
 }
 
+. ~/gitsrc/z/z.sh
+
 # Aliases
-export EDITOR=subl
 alias profile='subl ~/.dotfiles/zsh/other.zsh; source ~/.zshrc'
 alias gitconfig='git ec'
 alias dev_package_all=' source $RIQ/scripts/dev_package_all.sh'
