@@ -41,3 +41,5 @@ alias r-x='chmod 755'
  
 alias cls='clear; ls'
 alias logout='cls && logout'
+
+cls
