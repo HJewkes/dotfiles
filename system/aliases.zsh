@@ -34,10 +34,8 @@ alias da='du -sch'
 alias j='jobs -l'
 
 # chmod
-alias rw-='chmod 600'
-alias rwx='chmod 700'
-alias r--='chmod 644'
-alias r-x='chmod 755'
+alias x--='chmod 744'
+alias w--='chmod 644'
  
 alias cls='clear; ls'
 alias logout='cls && logout'

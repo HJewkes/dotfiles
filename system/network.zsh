@@ -1,0 +1,5 @@
+alias http="python -m SimpleHTTPServer 1234"
+alias ip="curl https://ipecho.net/plain ;echo"
+alias mip="ifconfig |grep inet"
+alias hosts="sudo subl /etc/hosts"
+alias ppj="python -m json.tool"
