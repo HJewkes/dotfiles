@@ -1,0 +1,270 @@
+# core #####################################################
+[core]
+    editor = subl
+    excludesfile = /Users/hjewkes/.gitignore_global
+    pager=less -x4
+############################################################
+
+
+# user #####################################################
+[user]
+    name = Henry Jewkes
+    email = henry@relateiq.com
+############################################################
+
+
+# color ####################################################
+[color]
+    branch = auto
+    diff = auto
+    status = auto
+
+[color "branch"]
+    current = red reverse
+    local = blue
+    remote = green
+
+[color "diff"]
+    meta = yellow
+    frag = magenta
+    old = red bold
+    new = green
+    plain = white
+
+[color "status"]
+    added = yellow
+    changed = green
+    untracked = cyan
+############################################################
+
+
+# push/pull/diff/options ###################################
+[push]
+    default = upstream
+[pull]
+    default = current
+[diff]
+  mnemonicprefix = true
+[branch]
+  autosetuprebase = always
+[apply]
+  whitespace = nowarn
+[hub]
+    protocol = https
+############################################################
+
+
+# alias ####################################################
+[alias]
+    ############################
+    # Simple Shortcuts
+
+    br = branch 
+    ci = commit
+    cl = clone
+    co = checkout
+    cp = cherry-pick
+    st = status -s
+    ############################
+
+
+    ############################
+    # Git Flow
+    # http://haacked.com/archive/2014/07/28/github-flow-aliases/
+
+    ## Pull Remote, Rebase local commits, remove branches not on remote, update submodules
+    up = !git pull --rebase --prune $@ && git submodule update --init --recursive
+
+    ## Create New Branch
+    cob = checkout -b
+
+    ## Commit All Changes
+    cm = "!f() { git add -A && git commit -m ${1}; git push; }; f"
+
+    ## Quick Commit all local changes
+    save = !git add -A && git commit -m 'SAVEPOINT'
+
+    ## Quick Commit only tracked changes
+    wip = !git add -u && git commit -m "WIP" 
+
+    ## Resets the previous commit, but keeps all the changes from that commit in the working directory
+    ## Used in conjunction with 'save' and 'wip', similar to unstashing
+    undo = reset HEAD~1 --mixed
+
+    ## Modifies the previous commit, and lets you update the commit message
+    ## Used in conjunction with 'save' and 'wip' to build on and formalize those commits
+    amend = commit -a --amend
+
+    ## Stores local changes in an unreachable commit, and resets head to previous commit
+    wipe = !git add -A && git commit -qm 'WIPE SAVEPOINT' && git reset HEAD~1 --hard
+
+    ## Find all wiped changes, for later recovery
+    find-wiped = !git reflog | grep 'WIPE SAVEPOINT'
+
+    ## Checks out branch (default staging), deletes all branches merged into it
+    bdone = "!bclean() { git branch --merged ${1-staging} | grep -v " ${1-staging}$" | xargs -r git branch -d; }; f() { git checkout ${1-staging} && git up && bclean(${1-staging}); }; f"
+    ############################
+
+
+    ############################
+    # Stash Commands
+    # http://thesimplesynthesis.com/post/6-git-aliases-to-make-stashing-easier
+
+    ## This alias simply lists your stashes:
+    sl = stash list
+
+    ## This uses the "stash-list" (http://thesimplesynthesis.com/post/git-stash-list) Git utility that I wrote and shows the stat of the stash diffs:
+    sll = "!git-stashlist"
+
+    ## This also uses the "stash-list" utility, but gives you the full diff of each stash:
+    slll = "!git-stashlist --full"
+
+    ## This will force you to save the stash with a name
+    ss = stash save
+
+    ## This will apply a stash for you:
+    sa = "!sh -c 'git stash apply stash@{$1}' -"
+
+    ## This will drop a stash for you. If you don't specify a number it will delete the stash on top:
+    sd = "!sh -c 'git stash drop stash@{$1}' -"
+    ############################
+
+
+    ############################
+    # Diff Commands
+
+    ## Show changes that have been staged
+    dc = diff --cached
+    diffc = diff --cached
+
+    ## 
+    diff = diff --word-diff
+
+    ## Show changes since last commit
+    dlc = diff --cached HEAD^
+
+    ##
+    sortdiff = !sh -c 'git diff "$@" | grep "^[+-]" | sort --key=1.2 | uniq -u -s1'
+    ############################
+
+
+    ############################
+    # Releasing Code
+
+    ## Get the current branch name
+    ## [HELPER]
+    branch-name = "!git rev-parse --abbrev-ref HEAD"
+
+    ## 
+    amb = "!f() { git branch | grep "$1" | cut -c 3- | grep -v am | xargs -I{} git branch -m {} am-{}; }; f"
+
+    ## 
+    ambr = "!f() { git branch --unset-upstream && git push origin :$branch_name; branch_name=$(git branch-name) && git branch -m $branch_name am-$branch_name && git push --set-upstream origin am-$branch_name; }; f"
+
+    ## Push the current branch to the remote "origin", and set it to track the upstream branch
+    publish = "!git push -u origin $(git branch-name)"
+
+    ## Delete the remote version of the current branch
+    unpublish = "!git push origin :$(git branch-name)"
+
+    ## Determine if the current branch contains a commit
+    contains = branch -a --contains
+    ############################
+
+
+    ############################
+    # Merging
+
+    ## Given a merge commit, find the span of commits that exist(ed) on that branch. 
+    ## [HELPER]
+    merge-span = "!f() { echo $(git log -1 $2 --merges --pretty=format:%P | cut -d' ' -f1)$1$(git log -1 $2 --merges --pretty=format:%P | cut -d' ' -f2); }; f"
+     
+    # Find the commits that were introduced by a merge
+    merge-log = "!git log `git merge-span .. $1`"
+
+    # Show the changes that were introduced by a merge
+    merge-diff = "!git diff `git merge-span ... $1`"
+
+    # As above, but in your difftool
+    merge-difftool = "!git difftool `git merge-span ... $1`"
+    ############################
+
+
+    ############################
+    # Logging
+
+    ## 
+    f = "!git ls-files | grep -i"
+
+    ## 
+    filelog = log -u
+    fl = log -u
+
+    ## 
+    ll = log --pretty=format:"%C(yellow)%h%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate --numstat
+
+    ## 
+    ls = log --pretty=format:"%C(yellow)%h\\ %ad%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate --date=relative
+
+    ## 
+    standup = log ––since yesterday ––author HJewkes
+
+    ## 
+    new = !sh -c 'git log $1@{1}..$1@{0} "$@"'
+
+    ## 
+    rank-contributors = !$ZSH/bin/git-rank-contributors
+
+    ## 
+    count   = !git shortlog -sn
+    ############################
+
+
+    ############################
+    #
+
+    gr = grep -Ii
+    gra = "!f() { A=$(pwd) && TOPLEVEL=$(git rev-parse --show-toplevel) && cd $TOPLEVEL && git grep --full-name -In $1 | xargs -I{} echo $TOPLEVEL/{} && cd $A; }; f"
+    grep = grep -Ii
+    la = "!git config -l | grep alias | cut -c 7-"
+    
+    promote = !$ZSH/bin/git-promote
+    wtf     = !$ZSH/bin/git-wtf
+
+    # Interactively rebase all the commits on the current branch
+    rebase-branch = "!git rebase -i `git merge-base master HEAD`"
+    
+    # Mark a file as "assume unchanged", which means that Git will treat it
+    # as though there are no changes to it even if there are. Useful for
+    # temporary changes to tracked files
+    assume = update-index --assume-unchanged
+    # Reverse the above
+    unassume = update-index --no-assume-unchanged
+    # Show the files that are currently assume-unchanged
+    assumed = "!git ls-files -v | grep ^h | cut -c 3-"
+################################
+
+
+[help]
+    autocorrect = 1
+
+[rerere]
+  enabled = true
+[rebase]
+  autosquash = true
+[difftool]
+    prompt = false
+[mergetool]
+    keepBackup = false
+
+
+#[merge]
+#    tool = intellij
+#[mergetool "intellij"]
+#    cmd = /Applications/IntelliJ\ IDEA\ 14.app/Contents/MacOS/idea merge $(cd $(dirname "$LOCAL") && pwd)/$(basename "$LOCAL") $(cd $(dirname "$REMOTE") && pwd)/$(basename "$REMOTE") $(cd $(dirname "$BASE") && pwd)/$(basename "$BASE") $(cd $(dirname "$MERGED") && pwd)/$(basename "$MERGED")
+#    trustExitCode = true
+#[diff]
+#    tool = intellij
+#[difftool "intellij"]
+#    cmd = /Applications/IntelliJ\ IDEA\ 14.app/Contents/MacOS/idea diff $(cd $(dirname "$LOCAL") && pwd)/$(basename "$LOCAL") $(cd $(dirname "$REMOTE") && pwd)/$(basename "$REMOTE")
+#
