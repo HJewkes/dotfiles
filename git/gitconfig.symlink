@@ -76,10 +76,10 @@
     up = !git pull --rebase --prune $@ && git submodule update --init --recursive
 
     ## Create New Branch
-    cob = checkout -b
+    cob = "!f() { git checkout -b ${1}; git publish; }; f"
 
     ## Commit All Changes
-    cm = "!f() { git add -A && git commit -m ${1}; git push; }; f"
+    cm = "!f() { git add -A && git commit -m \"$1\"; git push; }; f"
 
     ## Quick Commit all local changes
     save = !git add -A && git commit -m 'SAVEPOINT'
