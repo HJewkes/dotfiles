@@ -1,0 +1,38 @@
+#!/bin/sh
+
+usage() {
+  echo "Usage: $0" 1>&2;
+  echo " -n <string> : Brew Package Name" 1>&2;
+  exit 1;
+}
+
+if [ $# -eq 0 ] ; then
+  usage
+fi
+
+while getopts ':n:' flag; do
+  case "${flag}" in
+    n) package_name=${OPTARG} ;;
+    *) usage ;;
+  esac
+done
+
+# Check for Homebrew
+if test ! $(which brew)
+then
+  echo "Installing Homebrew for you"
+  ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+  brew tap caskroom/cask
+  brew install caskroom/cask/brew-cask
+fi
+
+if [ -z ${package_name} ] ; then
+  echo "[-n] Package Name is required";
+  exit 1;
+else
+  brew list | grep -wq "$package_name" >/dev/null
+  if [[ $? -ne 0  ]]; then
+    echo "Installing Brew Module: $npm_name"
+    brew install "$package_name"
+  fi
+fi
