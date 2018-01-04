@@ -1,0 +1,54 @@
+#!/bin/sh
+
+usage() {
+    echo "Usage: $0" 1>&2;
+    echo " -n <string> : Cask Name" 1>&2;
+    echo " -d : Add to Dock (Optional)" 1>&2;
+    exit 1;
+}
+
+add_to_dock() {
+    cask_app=$(brew cask info "$1" | grep "(app)")
+    cask_app=${cask_app%" (app)"}
+    command_first='<dict><key>tile-data</key><dict><key>file-data</key><dict><key>_CFURLString</key><string>'
+    app_location="/Applications/$cask_app"
+    command_last='</string><key>_CFURLStringType</key><integer>0</integer></dict></dict></dict>'
+    defaults write com.apple.dock persistent-apps -array-add "$command_first$app_location$command_last"
+    killall Dock
+}
+
+if [ $# -eq 0 ] ; then
+    usage
+fi
+
+is_add_to_dock=false
+
+while getopts ':dn:' flag; do
+  case "${flag}" in
+    n) cask_name=${OPTARG} ;;
+    d) is_add_to_dock=true ;;
+    *) usage ;;
+  esac
+done
+
+# Check for Homebrew
+if test ! $(which brew); then
+    echo "Installing Homebrew for you"
+    ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+    brew tap caskroom/cask
+    brew install caskroom/cask/brew-cask
+fi
+
+if [ -z ${cask_name} ] ; then
+    echo "[-n] Cask Name is required";
+    exit 1;
+else
+    if ! brew cask list | grep -wq "$cask_name"; then
+        brew cask install "$cask_name"
+        if $is_add_to_dock; then
+            add_to_dock "$cask_name"
+        fi
+    fi
+fi
+
+exit 0

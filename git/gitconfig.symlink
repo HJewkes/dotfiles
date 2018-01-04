@@ -43,10 +43,11 @@
     default = upstream
 [pull]
     default = current
+    rebase = false
 [diff]
   mnemonicprefix = true
 [branch]
-  autosetuprebase = always
+  autosetuprebase = never
 [apply]
   whitespace = nowarn
 [hub]
@@ -62,24 +63,30 @@
     br = branch 
     ci = commit
     cl = clone
-    co = checkout
     cp = cherry-pick
     st = status -s
     ############################
-
 
     ############################
     # Git Flow
     # http://haacked.com/archive/2014/07/28/github-flow-aliases/
 
-    ## Pull Remote, Rebase local commits, remove branches not on remote, update submodules
-    up = !git pull --rebase --prune $@ && git submodule update --init --recursive
+    p = !git fetch -p && git branch -vv | awk '/: gone]/{print $1}' | xargs git branch -d
+
+    ## Pull Remote, remove branches not on remote, update submodules
+    up = !git pull --prune $@ && git submodule update --init --recursive
 
     ## Create New Branch
     cob = "!f() { git checkout -b ${1}; git publish; }; f"
 
+    ## Merge Branch
+    merge = "!f() { git merge ${1}; git pull; git push; }; f"
+
+    ## Checkout
+    co = "!f() { git checkout ${1}; git pull; }; f"
+
     ## Commit All Changes
-    cm = "!f() { git add -A && git commit -m \"$1\"; git push; }; f"
+    cm = "!f() { git add -A && git commit -m \"$1\"; git pull; git push; }; f"
 
     ## Quick Commit all local changes
     save = !git add -A && git commit -m 'SAVEPOINT'
@@ -169,6 +176,9 @@
 
     ## Determine if the current branch contains a commit
     contains = branch -a --contains
+
+    ## Open Githup to create a pull request
+    pr = "!open https://github.com/splitio/$(basename `git rev-parse --show-toplevel`)/compare/$(git branch-name)?expand=1"
     ############################
 
 
@@ -230,9 +240,6 @@
     
     promote = !$ZSH/bin/git-promote
     wtf     = !$ZSH/bin/git-wtf
-
-    # Interactively rebase all the commits on the current branch
-    rebase-branch = "!git rebase -i `git merge-base master HEAD`"
     
     # Mark a file as "assume unchanged", which means that Git will treat it
     # as though there are no changes to it even if there are. Useful for

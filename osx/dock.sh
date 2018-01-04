@@ -50,6 +50,9 @@ defaults write com.apple.dock expose-animation-duration -float 0.1
 # Content                                                                     #
 ###############################################################################
 
+# Enable Spring-loaded Dock items (allowing you to drag a file over the folder/icon)
+defaults write com.apple.dock enable-spring-load-actions-on-all-items -bool true
+
 # Recent Items Stack
 defaults write com.apple.dock persistent-others -array-add '{ "tile-data" = { "list-type" = 1; }; "tile-type" = "recents-tile"; }'
 

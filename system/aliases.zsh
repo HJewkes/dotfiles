@@ -40,4 +40,8 @@ alias w--='chmod 644'
 alias cls='clear; ls'
 alias logout='cls && logout'
 
+alias processes='pstree | grep HJewkes | grep -v "/System" | grep -v "/Applications"| grep -v "/Library" | grep -v "com."'
+
+alias find_file='find . -name '
+
 cls
