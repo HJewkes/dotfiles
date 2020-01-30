@@ -20,3 +20,4 @@ alias gcfg='git ec'
 alias gb='git branch'
 alias gs='git status -sb' # upgrade your git if -sb breaks for you. it's fun.
 alias purr="git pull --rebase"
+alias sm="g co staging; g co master; g co staging-to-master; g merge master; g merge staging; g push; cls"
