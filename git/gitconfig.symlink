@@ -8,8 +8,8 @@
 
 # user #####################################################
 [user]
-    name = Henry Jewkes
-    email = henry@relateiq.com
+	name = HJewkes
+    email = hjewkes@gmail.com
 ############################################################
 
 
@@ -109,7 +109,7 @@
     find-wiped = !git reflog | grep 'WIPE SAVEPOINT'
 
     ## Checks out branch (default staging), deletes all branches merged into it
-    bdone = "!bclean() { git branch --merged ${1-staging} | grep -v " ${1-staging}$" | xargs -r git branch -d; }; f() { git checkout ${1-staging} && git up && bclean(${1-staging}); }; f"
+    purge = "!git checkout staging && git up && git branch --merged staging | grep -v " staging$" | xargs -n1 git branch -d"
     ############################
 
 
