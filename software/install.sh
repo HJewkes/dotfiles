@@ -9,12 +9,11 @@ brew install zsh-history-substring-search
 brew install z
 
 # Brew Casks
-brew cask install google-chrome
-brew cask install dashlane
-brew cask install authy
-brew cask install iterm2
-brew cask install sublime-text
-brew cask install slack
+brew install google-chrome
+brew install authy
+brew install iterm2
+brew install sublime-text
+brew install slack
 
 # Brew
 brew cask install homebrew/cask-versions/java11
