@@ -21,7 +21,8 @@ done
 if test ! $(which brew)
 then
   echo "Installing Homebrew for you"
-  ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  echo 'eval "$(/opt/homebrew/bin/brew shellenv)"'
   brew tap caskroom/cask
   brew install caskroom/cask/brew-cask
 fi
@@ -36,3 +37,36 @@ else
     brew install "$package_name"
   fi
 fi
+
+
+# - Computer
+# - Gmail
+# - Slack
+# - Jira
+# - Github
+# - VPN
+# - 
+
+# cask_install -n google-drive
+# cask_install -n spotify -d
+# cask_install -n sonos -d
+# cask_install -n dashlane -d
+
+brew install z
+brew install pyenv
+
+# Install Meslo Powerline Font
+brew tap homebrew/cask-fonts
+brew install font-meslo-for-powerline
+
+brew install coreutils
+
+#####################################################
+# Syntax Highlighting
+# https://github.com/zsh-users/zsh-syntax-highlighting
+brew install zsh-syntax-highlighting
+
+#####################################################
+# History Substring Search
+# https://github.com/zsh-users/zsh-history-substring-search
+brew install zsh-history-substring-search

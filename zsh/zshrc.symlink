@@ -37,3 +37,5 @@ for file in ${(M)config_files:#*/completion.zsh}
 do
   source $file
 done
+
+export PATH="$HOME/.poetry/bin:$PATH"

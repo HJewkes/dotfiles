@@ -8,8 +8,21 @@
 
 # user #####################################################
 [user]
-	name = HJewkes
+    name = HJewkes
     email = hjewkes@gmail.com
+############################################################
+
+
+# nextdoor #################################################
+[url "git+ssh://git@git.corp.nextdoor.com"]
+        insteadOf = git://git.corp.nextdoor.com
+        insteadOf = git+ssh://git.corp.nextdoor.com
+        insteadOf = https://git.corp.nextdoor.com
+        insteadOf = http://git.corp.nextdoor.com
+[remote "nextdoor.com"]
+        url = url.git+ssh://nextdoor
+[commit]
+	gpgsign = false
 ############################################################
 
 
@@ -108,8 +121,11 @@
     ## Find all wiped changes, for later recovery
     find-wiped = !git reflog | grep 'WIPE SAVEPOINT'
 
-    ## Checks out branch (default staging), deletes all branches merged into it
-    purge = "!git checkout staging && git up && git branch --merged staging | grep -v " staging$" | xargs -n1 git branch -d"
+    ## Checks out branch (default main), deletes all branches merged into it
+    purge = "!git checkout main && git up && git branch --merged main | grep -v " main$" | xargs -n1 git branch -d"
+
+    ## Reset branch
+    rs = "!git reset --hard && git clean -df && git checkout -- ."
     ############################
 
 
@@ -263,15 +279,8 @@
     prompt = false
 [mergetool]
     keepBackup = false
-
-
-#[merge]
-#    tool = intellij
-#[mergetool "intellij"]
-#    cmd = /Applications/IntelliJ\ IDEA\ 14.app/Contents/MacOS/idea merge $(cd $(dirname "$LOCAL") && pwd)/$(basename "$LOCAL") $(cd $(dirname "$REMOTE") && pwd)/$(basename "$REMOTE") $(cd $(dirname "$BASE") && pwd)/$(basename "$BASE") $(cd $(dirname "$MERGED") && pwd)/$(basename "$MERGED")
-#    trustExitCode = true
-#[diff]
-#    tool = intellij
-#[difftool "intellij"]
-#    cmd = /Applications/IntelliJ\ IDEA\ 14.app/Contents/MacOS/idea diff $(cd $(dirname "$LOCAL") && pwd)/$(basename "$LOCAL") $(cd $(dirname "$REMOTE") && pwd)/$(basename "$REMOTE")
-#
+[url "git+ssh://org-605176@github.com/Nextdoor"]
+	insteadOf = git+ssh://github.com/Nextdoor
+	insteadOf = git://github.com/Nextdoor
+	insteadOf = https://github.com/Nextdoor
+	insteadOf = http://github.com/Nextdoor

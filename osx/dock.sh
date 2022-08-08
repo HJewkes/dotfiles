@@ -9,10 +9,11 @@ defaults write com.apple.dock pinning end
 defaults write com.apple.dock autohide -bool true
 
 # Remove Hide Delay
-defaults write com.apple.Dock autohide-delay -float 0
+defaults write com.apple.Dock autohide-delay -float 0.0001
 
 # Remove the animation when hiding/showing the Dock
-defaults write com.apple.dock autohide-time-modifier -float 0
+defaults write com.apple.dock autohide-time-modifier -float 0.3
+
 
 ###############################################################################
 # Styling                                                                     #

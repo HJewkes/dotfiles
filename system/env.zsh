@@ -4,5 +4,3 @@ export ARCHFLAGS="-arch x86_64"
 export COMPLETION_WAITING_DOTS="true"
 export ENABLE_CORRECTION="true"
 export GREP_OPTIONS="--color=auto"
-
-eval `dircolors`

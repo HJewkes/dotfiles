@@ -1,3 +1,9 @@
+
+alias dircolors=gdircolors
+
+eval $(gdircolors ~/.dotfiles/system/dircolors.256dark)
+alias gls="/opt/homebrew/opt/coreutils/libexec/gnubin/ls"
+
 # grc overides for ls
 #   Made possible through contributions from generous benefactors like
 #   `brew install coreutils`
@@ -10,7 +16,7 @@ then
 fi
 
 alias '..'='cd ..'
-# The -g makes them global aliases, so they're expaned even inside commands
+# The -g makes them global aliases, so they're expanded even inside commands
 alias -g ...='../..'
 alias -g ....='../../..'
 alias -g .....='../../../..'
@@ -24,7 +30,7 @@ alias rm='nocorrect rm'         # no spelling correction on rm
 
 # Execute rmdir
 alias rd='rmdir'
-# Execute rmdir
+# Execute mkdir
 alias md='mkdir -p'
 
 # general
