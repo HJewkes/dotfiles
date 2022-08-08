@@ -6,6 +6,12 @@ brew install zsh-syntax-highlighting
 brew install zsh-history-substring-search
 brew install z
 
+brew install google-chrome
+brew install authy
+brew install iterm2
+brew install sublime-text
+brew install slack
+
 # Brew
 brew cask install homebrew/cask-versions/java11
 brew install sbt
@@ -25,5 +31,4 @@ dockutil --add '/Applications/Google Chrome.app'
 dockutil --add '/Applications/Sublime Text.app'
 dockutil --add '/Applications/iTerm.app'
 dockutil --add '/Applications/Slack.app'
-dockutil --add '/Applications/Dashlane.app'
 dockutil --add '/Applications/Authy Desktop.app'
