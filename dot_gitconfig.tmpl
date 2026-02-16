@@ -1,0 +1,143 @@
+[core]
+    editor = {{ if lookPath "code" }}code --wait{{ else }}vim{{ end }}
+    excludesfile = {{ .chezmoi.homeDir }}/.gitignore_global
+    pager = less -x4
+
+[user]
+    name = {{ .name }}
+    email = {{ .email }}
+
+[commit]
+    gpgsign = false
+
+[color]
+    branch = auto
+    diff = auto
+    status = auto
+
+[color "branch"]
+    current = red reverse
+    local = blue
+    remote = green
+
+[color "diff"]
+    meta = yellow
+    frag = magenta
+    old = red bold
+    new = green
+    plain = white
+
+[color "status"]
+    added = yellow
+    changed = green
+    untracked = cyan
+
+[push]
+    default = current
+
+[pull]
+    default = current
+    rebase = false
+
+[diff]
+    mnemonicprefix = true
+
+[branch]
+    autosetuprebase = never
+
+[apply]
+    whitespace = nowarn
+
+[alias]
+    # Simple shortcuts
+    br = branch
+    ci = commit
+    cl = clone
+    cp = cherry-pick
+    st = status -s
+
+    # Fetch and prune gone branches
+    p = !git fetch -p && git branch -vv | awk '/: gone]/{print $1}' | xargs git branch -d
+
+    # Pull, prune, update submodules
+    up = !git pull --prune $@ && git submodule update --init --recursive
+
+    # Create and publish new branch
+    cob = "!f() { git checkout -b ${1}; git push -u origin $(git rev-parse --abbrev-ref HEAD); }; f"
+
+    # Quick save/wip/undo workflow
+    save = !git add -A && git commit -m 'SAVEPOINT'
+    wip = !git add -u && git commit -m "WIP"
+    undo = reset HEAD~1 --mixed
+    amend = commit -a --amend
+
+    # Wipe and recovery
+    wipe = !git add -A && git commit -qm 'WIPE SAVEPOINT' && git reset HEAD~1 --hard
+    find-wiped = !git reflog | grep 'WIPE SAVEPOINT'
+
+    # Purge merged branches
+    purge = "!git checkout main && git up && git branch --merged main | grep -v \" main$\" | xargs -n1 git branch -d"
+
+    # Reset branch hard
+    rs = "!git reset --hard && git clean -df && git checkout -- ."
+
+    # Stash shortcuts
+    sl = stash list
+    ss = stash save
+    sa = "!sh -c 'git stash apply stash@{$1}' -"
+    sd = "!sh -c 'git stash drop stash@{$1}' -"
+
+    # Diff shortcuts
+    dc = diff --cached
+    diffc = diff --cached
+    diff = diff --word-diff
+    dlc = diff --cached HEAD^
+    sortdiff = !sh -c 'git diff "$@" | grep "^[+-]" | sort --key=1.2 | uniq -u -s1'
+
+    # Branch helpers
+    branch-name = "!git rev-parse --abbrev-ref HEAD"
+    publish = "!git push -u origin $(git branch-name)"
+    unpublish = "!git push origin :$(git branch-name)"
+    contains = branch -a --contains
+
+    # Merge inspection
+    merge-span = "!f() { echo $(git log -1 $2 --merges --pretty=format:%P | cut -d' ' -f1)$1$(git log -1 $2 --merges --pretty=format:%P | cut -d' ' -f2); }; f"
+    merge-log = "!git log `git merge-span .. $1`"
+    merge-diff = "!git diff `git merge-span ... $1`"
+
+    # Logging
+    f = "!git ls-files | grep -i"
+    filelog = log -u
+    fl = log -u
+    ll = log --pretty=format:"%C(yellow)%h%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate --numstat
+    ls = log --pretty=format:"%C(yellow)%h\\ %ad%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate --date=relative
+    new = !sh -c 'git log $1@{1}..$1@{0} "$@"'
+    count = !git shortlog -sn
+
+    # Search
+    gr = grep -Ii
+    gra = "!f() { A=$(pwd) && TOPLEVEL=$(git rev-parse --show-toplevel) && cd $TOPLEVEL && git grep --full-name -In $1 | xargs -I{} echo $TOPLEVEL/{} && cd $A; }; f"
+    grep = grep -Ii
+
+    # List all aliases
+    la = "!git config -l | grep alias | cut -c 7-"
+
+    # Assume unchanged
+    assume = update-index --assume-unchanged
+    unassume = update-index --no-assume-unchanged
+    assumed = "!git ls-files -v | grep ^h | cut -c 3-"
+
+[help]
+    autocorrect = 1
+
+[rerere]
+    enabled = true
+
+[rebase]
+    autosquash = true
+
+[difftool]
+    prompt = false
+
+[mergetool]
+    keepBackup = false

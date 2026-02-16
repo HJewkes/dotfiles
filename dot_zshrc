@@ -1,0 +1,11 @@
+eval "$(/opt/homebrew/bin/brew shellenv)"
+
+source ~/.zsh/config.zsh
+source ~/.zsh/completion.zsh
+source ~/.zsh/plugins.zsh
+source ~/.zsh/aliases.zsh
+
+eval "$(starship init zsh)"
+
+[[ -f ~/.secrets.zsh ]] && source ~/.secrets.zsh
+[[ -f ~/.localrc ]] && source ~/.localrc

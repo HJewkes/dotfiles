@@ -1,0 +1,8 @@
+brew "coreutils"
+brew "tree"
+brew "starship"
+brew "zsh"
+brew "gh"
+brew "jq"
+brew "fd"
+brew "ripgrep"

@@ -1,55 +1,35 @@
 # dotfiles
 
-My dotfiles, based on a fork from Zach Holman's infamous repo ([read his post on the
-subject](http://zachholman.com/2010/08/dotfiles-are-meant-to-be-forked/)).
+Managed by [chezmoi](https://chezmoi.io/).
 
-## install
+## Setup on a new machine
 
-Run this:
-
-```sh
-git clone https://github.com/hjewkes/dotfiles.git ~/.dotfiles
-cd ~/.dotfiles
-script/bootstrap
+```bash
+sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply HJewkes
 ```
 
-This will symlink the appropriate files in `.dotfiles` to your home directory.
-Everything is configured and tweaked within `~/.dotfiles`.
+Prompts for git name, email, and machine type (personal/work).
 
-The main file you'll want to change right off the bat is `zsh/zshrc.symlink`,
-which sets up a few paths that'll be different on your particular machine.
+## What's included
 
-`dot` is a simple script that installs some dependencies, sets sane OS X
-defaults, and so on. Tweak this script, and occasionally run `dot` from
-time to time to keep your environment fresh and up-to-date. You can find
-this script in `bin/`.
+- **Git**: Templated gitconfig with aliases, colors, rerere, autosquash
+- **Zsh**: zinit plugins (syntax highlighting, autosuggestions, completions)
+- **Starship**: Minimal prompt (directory, git branch/status)
+- **Brewfile**: Core packages via `brew bundle`
+- **Claude Code**: Settings, hooks, agents, skills, global CLAUDE.md
+- **Cursor**: Skills and meta-skills
 
-## topical
+## Secrets
 
-Everything's built around topic areas. If you're adding a new area to your
-forked dotfiles — say, "Java" — you can simply add a `java` directory and put
-files in there. Anything with an extension of `.zsh` will get automatically
-included into your shell. Anything with an extension of `.symlink` will get
-symlinked without extension into `$HOME` when you run `script/bootstrap`.
+Secrets are managed via chezmoi + Dashlane. The `~/.secrets.zsh` template pulls
+tokens from Dashlane at `chezmoi apply` time. Machine-specific paths live in
+`~/.localrc` (not managed by chezmoi).
 
-## components
+## Daily usage
 
-There's a few special files in the hierarchy.
-
-- **bin/**: Anything in `bin/` will get added to your `$PATH` and be made
-  available everywhere.
-- **topic/\*.zsh**: Any files ending in `.zsh` get loaded into your
-  environment.
-- **topic/path.zsh**: Any file named `path.zsh` is loaded first and is
-  expected to setup `$PATH` or similar.
-- **topic/completion.zsh**: Any file named `completion.zsh` is loaded
-  last and is expected to setup autocomplete.
-- **topic/\*.symlink**: Any files ending in `*.symlink` get symlinked into
-  your `$HOME`. This is so you can keep all of those versioned in your dotfiles
-  but still keep those autoloaded files in your home directory. These get
-  symlinked in when you run `script/bootstrap`.
-
-## thanks
-
-I forked [Zach Holman](http://github.com/zachholman)' excellent
-[dotfiles](http://github.com/zachholman/dotfiles).
+```bash
+chezmoi edit ~/.zshrc        # Edit source, not target
+chezmoi apply                # Apply changes to home dir
+chezmoi diff                 # Preview pending changes
+chezmoi update               # Pull latest from GitHub and apply
+```

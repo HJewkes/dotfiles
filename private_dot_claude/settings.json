@@ -1,0 +1,86 @@
+{
+  "enabledPlugins": {
+    "agent-sdk-dev@claude-plugins-official": true,
+    "claude-code-setup@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true,
+    "code-review@claude-plugins-official": true,
+    "code-simplifier@claude-plugins-official": true,
+    "figma@claude-plugins-official": true,
+    "frontend-design@claude-plugins-official": true,
+    "commit-commands@claude-plugins-official": true,
+    "security-guidance@claude-plugins-official": true,
+    "feature-dev@claude-plugins-official": true,
+    "pr-review-toolkit@claude-plugins-official": true,
+    "hookify@claude-plugins-official": true,
+    "playwright@claude-plugins-official": true,
+    "context7@claude-plugins-official": true
+  },
+  "effortLevel": "medium",
+  "skipDangerousModePermissionPrompt": true,
+  "permissions": {
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(git push --force*)",
+      "Bash(sudo *)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.gnupg/**)",
+      "Read(~/.env)"
+    ]
+  },
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$TOOL_INPUT\" | grep -qE 'rm\\s+-(r|f|rf|fr)\\s'; then echo 'BLOCKED: Recursive/force delete not allowed. Use targeted rm instead.' >&2; exit 2; fi"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$TOOL_INPUT\" | grep -qE 'git\\s+push.*\\b(main|master)\\b'; then echo 'BLOCKED: Direct push to main/master. Use a feature branch.' >&2; exit 2; fi"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "FILE=$(echo \"$TOOL_INPUT\" | jq -r '.file_path // empty'); case \"$FILE\" in *.env|*.env.*|*credentials*|*secret*|*.pem|*.key) echo \"BLOCKED: Cannot edit sensitive file: $FILE\" >&2; exit 2;; */pnpm-lock.yaml|*/package-lock.json|*/yarn.lock|*/uv.lock) echo \"BLOCKED: Cannot edit lock file: $FILE\" >&2; exit 2;; esac"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "FILE=$(echo \"$TOOL_INPUT\" | jq -r '.file_path // empty'); case \"$FILE\" in *.env|*.env.*|*credentials*|*secret*|*.pem|*.key) echo \"BLOCKED: Cannot write sensitive file: $FILE\" >&2; exit 2;; */pnpm-lock.yaml|*/package-lock.json|*/yarn.lock|*/uv.lock) echo \"BLOCKED: Cannot write lock file: $FILE\" >&2; exit 2;; esac"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "osascript -e 'display notification \"Claude Code needs your attention\" with title \"Claude Code\" sound name \"Funk\"'"
+          }
+        ]
+      }
+    ],
+    "Stop": []
+  }
+}
