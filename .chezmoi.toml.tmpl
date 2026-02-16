@@ -2,6 +2,12 @@
 {{- $email := promptStringOnce . "email" "Git author email" -}}
 {{- $machine := promptChoiceOnce . "machine" "Machine type" (list "personal" "work") -}}
 
+encryption = "age"
+
+[age]
+    identity = "~/.config/chezmoi/key.txt"
+    recipient = "age1j7hqrrzez0xus82vt3akl79vwev7cyt7mzdymz2kzrvu6wqjmpkqxgsm0v"
+
 [data]
     name = {{ $name | quote }}
     email = {{ $email | quote }}

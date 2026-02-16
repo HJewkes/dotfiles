@@ -1,3 +1,4 @@
+brew "age"
 brew "coreutils"
 brew "tree"
 brew "starship"
