@@ -11,7 +11,7 @@ Manages two concerns: **output mode switching** (voice vs text) and **agent team
 
 ## Voice/Text Mode Toggle
 
-**Trigger words**: "vm", "voice mode" → switch to VOICE. "tm", "text mode" → switch to TEXT.
+**Trigger words**: "vm", "voice mode" -> switch to VOICE. "tm", "text mode" -> switch to TEXT.
 
 ### VOICE Mode Rules
 - Short sentences, max 2 lines each
@@ -35,11 +35,31 @@ Manages two concerns: **output mode switching** (voice vs text) and **agent team
 
 ### Orchestration Details
 
-Read [references/team-orchestration.md](references/team-orchestration.md) for the full coordination pattern (DECOMPOSE → WAVE PLAN → DISPATCH → GATE → VERIFY), agent spawn rules, model selection table, context budget management, and conflict resolution.
+Read [references/team-orchestration.md](references/team-orchestration.md) for the full coordination pattern (DECOMPOSE -> WAVE PLAN -> DISPATCH -> GATE -> VERIFY), agent spawn rules, model selection table, context budget management, and conflict resolution.
+
+## Plan-Driven Orchestration
+
+When orchestrating execution of a structured plan (`.claude/plans/<plan-id>/`):
+
+### At Session Start
+Read `plan.md` and `manifest.json`. The manifest defines waves and task dependencies. Use the manifest's wave grouping directly — do not re-derive wave structure.
+
+### At Each Wave Boundary
+Re-read `manifest.json` from disk. This protects against context compaction loss. Update task statuses in the manifest after each wave completes.
+
+### Agent Dispatch
+Point each agent at its briefing file. Do NOT paste briefing content inline. Include in dispatch prompt: plan-id, task-id, briefing path, working directory.
+
+### After Final Wave
+1. Optionally write `.claude/plans/<plan-id>/summary.md` with execution notes
+2. Delete the plan directory: `rm -rf .claude/plans/<plan-id>/`
+3. If deletion fails, warn but do not block
 
 ## Common Mistakes
 - Spawning agents without full context in the prompt
 - Letting multiple agents modify the same file
 - Skipping verification after merging agent outputs
 - Using teams for tasks that are naturally sequential
-- Putting dependent tasks in the same wave (task B needs task A's output → different waves)
+- Putting dependent tasks in the same wave (task B needs task A's output -> different waves)
+- Pasting full briefing text inline instead of pointing agents to their briefing file
+- Not re-reading manifest at wave boundaries (context compaction can lose state)

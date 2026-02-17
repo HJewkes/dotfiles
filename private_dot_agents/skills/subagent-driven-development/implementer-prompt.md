@@ -8,9 +8,18 @@ Task tool (general-purpose):
   prompt: |
     You are implementing Task N: [task name]
 
-    ## Task Description
+    ## Task Summary
 
-    [FULL TEXT of task from plan - paste it here, don't make subagent read file]
+    [2-3 sentence summary from orchestration plan's task table]
+
+    ## Your Briefing
+
+    Read your full task specification before starting work:
+    `.claude/plans/<plan-id>/briefings/task-NN.md`
+
+    This file contains your architectural context, file ownership list,
+    step-by-step instructions, success criteria, and anti-patterns.
+    Read it completely before proceeding.
 
     ## Context
 

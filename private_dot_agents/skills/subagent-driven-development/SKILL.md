@@ -48,9 +48,10 @@ digraph process {
         qual_fix [label="Fix quality issues" shape=box];
         done [label="Mark task complete" shape=box];
     }
-    start [label="Extract all tasks from plan" shape=box];
+    start [label="Read plan.md + manifest.json\nNote task IDs and waves" shape=box];
     more [label="More tasks?" shape=diamond];
     final [label="Final code review" shape=box];
+    cleanup [label="Cleanup plan directory" shape=box];
     finish [label="finishing-a-development-branch" shape=box style=filled fillcolor=lightgreen];
 
     start -> impl;
@@ -70,9 +71,27 @@ digraph process {
     done -> more;
     more -> impl [label="yes"];
     more -> final [label="no"];
-    final -> finish;
+    final -> cleanup;
+    cleanup -> finish;
 }
 ```
+
+### Loading the Plan
+
+Read the orchestration plan (`.claude/plans/<plan-id>/plan.md`) and manifest (`manifest.json`). Note task IDs and wave grouping. **Do NOT read briefing files into your context** — agents read their own briefings from disk.
+
+### Dispatching Agents
+
+For each task, dispatch the implementer with:
+- A 2-3 sentence summary (from the orchestration plan's task table)
+- The briefing file path: `.claude/plans/<plan-id>/briefings/task-NN.md`
+- The agent reads the full specification from its briefing file
+
+See prompt templates below for exact dispatch format.
+
+### At Wave Boundaries
+
+Re-read `manifest.json` from disk to recover task state if context has been compacted. Update task statuses in the manifest as tasks complete.
 
 ## Prompt Templates
 
@@ -80,12 +99,19 @@ digraph process {
 
 ## Red Flags
 
-**Never:** skip reviews, proceed with unfixed issues, dispatch parallel implementers, make subagent read plan file (provide full text), start code quality review before spec compliance passes.
+**Never:** skip reviews, proceed with unfixed issues, dispatch parallel implementers, paste full briefing text inline instead of pointing to briefing file, skip reading the manifest at wave boundaries, start code quality review before spec compliance passes.
 
 - Dispatch prompts missing key sections (see skill-conventions/references/dispatch-prompt-template.md for the canonical 6-section structure)
 
 **If subagent asks questions:** Answer before proceeding.
 **If reviewer finds issues:** Implementer fixes, re-review until approved.
+
+## Cleanup
+
+After all tasks complete and final review passes, before calling `finishing-a-development-branch`:
+1. Optionally write `.claude/plans/<plan-id>/summary.md` with execution notes
+2. Delete the plan directory: `rm -rf .claude/plans/<plan-id>/`
+3. If deletion fails, warn but do not block
 
 ## References
 

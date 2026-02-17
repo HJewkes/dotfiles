@@ -9,6 +9,8 @@
 5. **NEXT WAVE**: Feed outputs from completed wave into next wave's context
 6. **VERIFY**: Run full test suite on final merged result
 
+**When a plan manifest exists:** Use its `waves` array directly instead of manually grouping tasks. The manifest was designed by the planner with dependency analysis already done. Override only if runtime discoveries invalidate the grouping (e.g., unexpected file conflicts).
+
 ## Agent Spawn Rules
 
 - Each agent gets explicit file ownership (which files it may modify)
@@ -30,6 +32,8 @@
 - If task context exceeds ~30K tokens, split into sub-tasks or summarize inputs
 - Return format constraints prevent output bloat from consuming coordinator context
 - Monitor agent count — each active agent consumes coordinator context for tracking
+- Briefing files stay on disk — never paste full briefing content into coordinator context. Include only task-id + 1-line summary + briefing path
+- Re-read manifest from disk at wave boundaries to recover from context compaction
 
 ## Conflict Resolution
 

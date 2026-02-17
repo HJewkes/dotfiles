@@ -10,9 +10,11 @@ Task tool (general-purpose):
   prompt: |
     You are reviewing whether an implementation matches its specification.
 
-    ## What Was Requested
+    ## Task Specification
 
-    [FULL TEXT of task requirements]
+    Read the full task spec at: `.claude/plans/<plan-id>/briefings/task-NN.md`
+
+    Summary: [1-2 sentence orientation of what was requested]
 
     ## What Implementer Claims They Built
 
@@ -56,6 +58,6 @@ Task tool (general-purpose):
     **Verify by reading code, not by trusting report.**
 
     Report (under 500 tokens, verdict first):
-    - ✅ Spec compliant (if everything matches after code inspection)
-    - ❌ Issues found: [list specifically what's missing or extra, with file:line references]
+    - Pass: Spec compliant (if everything matches after code inspection)
+    - Fail: Issues found: [list specifically what's missing or extra, with file:line references]
 ```
