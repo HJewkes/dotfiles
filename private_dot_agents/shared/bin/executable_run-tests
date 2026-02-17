@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: run-tests [--dry-run] [--help]
+
+Auto-detect project test runner and execute.
+
+Detection priority:
+  1. package.json (scripts.test, not default stub) → npm test
+  2. Cargo.toml                                    → cargo test
+  3. pytest.ini | conftest.py                      → pytest
+  4. go.mod                                        → go test ./...
+  5. Makefile (test target)                         → make test
+
+Options:
+  --dry-run   Print detected command without executing
+  --help      Show this help message
+
+Exit codes:
+  0  Tests passed
+  1  Tests failed
+  2  No test runner detected
+EOF
+}
+
+DRY_RUN=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run) DRY_RUN=true; shift ;;
+    --help) usage; exit 0 ;;
+    *) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
+  esac
+done
+
+detect_runner() {
+  # 1. package.json with non-stub test script
+  if [[ -f package.json ]]; then
+    # Extract scripts.test value — grep for "test" key inside scripts block
+    local test_script
+    test_script=$(sed -n '/"scripts"/,/}/p' package.json | grep '"test"' | head -1 | sed 's/.*"test"[[:space:]]*:[[:space:]]*"\(.*\)".*/\1/')
+    if [[ -n "$test_script" && "$test_script" != 'echo "Error: no test specified" && exit 1' ]]; then
+      echo "npm test"
+      return 0
+    fi
+  fi
+
+  # 2. Cargo.toml
+  if [[ -f Cargo.toml ]]; then
+    echo "cargo test"
+    return 0
+  fi
+
+  # 3. pytest
+  if [[ -f pytest.ini || -f conftest.py || -f setup.cfg ]] && command -v pytest &>/dev/null; then
+    echo "pytest"
+    return 0
+  fi
+
+  # 4. go.mod
+  if [[ -f go.mod ]]; then
+    echo "go test ./..."
+    return 0
+  fi
+
+  # 5. Makefile with test target
+  if [[ -f Makefile ]] && grep -q '^test[[:space:]]*:' Makefile; then
+    echo "make test"
+    return 0
+  fi
+
+  return 1
+}
+
+RUNNER=$(detect_runner) || {
+  echo "No test runner detected" >&2
+  exit 2
+}
+
+echo "Detected: $RUNNER" >&2
+
+if [[ "$DRY_RUN" == true ]]; then
+  echo "$RUNNER"
+  exit 0
+fi
+
+exec $RUNNER

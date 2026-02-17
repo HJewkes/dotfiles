@@ -1,3 +1,26 @@
 README.md
 LICENSE.md
 Brewfile
+
+# Claude Code runtime directories — not managed by chezmoi
+.claude/cache
+.claude/debug
+.claude/downloads
+.claude/file-history
+.claude/history.jsonl
+.claude/plans
+.claude/plugins
+.claude/projects
+.claude/session-env
+.claude/shell-snapshots
+.claude/stats-cache.json
+.claude/statusline-command.sh
+.claude/tasks
+.claude/teams
+.claude/telemetry
+.claude/todos
+.claude/*.json
+!.claude/settings.json
+
+# Agents runtime
+.agents/.skill-lock-backup*

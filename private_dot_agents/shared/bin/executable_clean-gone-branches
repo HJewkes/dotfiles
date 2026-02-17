@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: clean-gone-branches [--dry-run] [--help]
+
+Delete local branches whose remote tracking branch is [gone], including associated worktrees.
+
+Steps:
+  1. git fetch --prune (sync remote state)
+  2. Find branches marked [gone]
+  3. Remove associated worktrees
+  4. Delete the branches
+
+Options:
+  --dry-run   Show what would be deleted without doing it
+  --help      Show this help message
+
+Exit codes:
+  0  Done (or nothing to clean)
+  1  Git error
+EOF
+}
+
+DRY_RUN=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run) DRY_RUN=true; shift ;;
+    --help) usage; exit 0 ;;
+    *) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
+  esac
+done
+
+# Verify git repo
+git rev-parse --git-dir &>/dev/null || { echo "Not a git repository" >&2; exit 1; }
+
+# Fetch and prune
+echo "Fetching and pruning..." >&2
+git fetch --prune 2>&1 >&2 || { echo "git fetch --prune failed" >&2; exit 1; }
+
+# Find [gone] branches
+GONE_BRANCHES=$(git branch -v | grep '\[gone\]' | sed 's/^[+* ]*//' | awk '{print $1}')
+
+if [[ -z "$GONE_BRANCHES" ]]; then
+  echo "No stale branches found"
+  exit 0
+fi
+
+BRANCH_COUNT=0
+WORKTREE_COUNT=0
+
+while IFS= read -r branch; do
+  [[ -z "$branch" ]] && continue
+
+  # Check for associated worktree
+  worktree=$(git worktree list | grep "\\[$branch\\]" | awk '{print $1}' || true)
+  toplevel=$(git rev-parse --show-toplevel)
+
+  if [[ -n "$worktree" && "$worktree" != "$toplevel" ]]; then
+    if [[ "$DRY_RUN" == true ]]; then
+      echo "Would remove worktree: $worktree (branch: $branch)"
+    else
+      echo "Removing worktree: $worktree" >&2
+      git worktree remove --force "$worktree"
+    fi
+    WORKTREE_COUNT=$((WORKTREE_COUNT + 1))
+  fi
+
+  if [[ "$DRY_RUN" == true ]]; then
+    echo "Would delete branch: $branch"
+  else
+    echo "Deleting branch: $branch" >&2
+    git branch -D "$branch"
+  fi
+  BRANCH_COUNT=$((BRANCH_COUNT + 1))
+done <<< "$GONE_BRANCHES"
+
+if [[ "$DRY_RUN" == true ]]; then
+  echo "Dry run: would remove $BRANCH_COUNT branches, $WORKTREE_COUNT worktrees"
+else
+  echo "Removed $BRANCH_COUNT branches, $WORKTREE_COUNT worktrees"
+fi

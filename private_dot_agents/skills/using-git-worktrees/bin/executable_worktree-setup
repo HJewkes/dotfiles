@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: worktree-setup <branch-name> [--dir <path>] [--no-install] [--no-test] [--help]
+
+Create a git worktree with dependency installation and test baseline verification.
+
+Arguments:
+  branch-name         Name for the new branch and worktree
+
+Options:
+  --dir <path>        Worktree parent directory (overrides auto-detection)
+  --no-install        Skip dependency installation
+  --no-test           Skip baseline test verification
+  --help              Show this help message
+
+Directory auto-detection priority:
+  1. .worktrees/  (if exists)
+  2. worktrees/   (if exists)
+  3. CLAUDE.md worktree preference (if specified)
+  4. Exit 1 with suggestion (non-interactive)
+
+Dependency installation detection:
+  package.json    → npm install
+  Cargo.toml      → cargo build
+  requirements.txt → pip install -r requirements.txt
+  pyproject.toml  → poetry install (if poetry.lock) or pip install -e .
+  go.mod          → go mod download
+
+Test verification:
+  Calls ~/.agents/bin/run-tests internally.
+
+Exit codes:
+  0  Worktree ready, tests pass
+  1  Fatal error (no git repo, no directory detected, creation failed)
+  2  Worktree created but tests fail or no test runner found
+EOF
+}
+
+BRANCH_NAME=""
+DIR_OVERRIDE=""
+DO_INSTALL=true
+DO_TEST=true
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dir) DIR_OVERRIDE="$2"; shift 2 ;;
+    --no-install) DO_INSTALL=false; shift ;;
+    --no-test) DO_TEST=false; shift ;;
+    --help) usage; exit 0 ;;
+    -*)  echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
+    *)
+      if [[ -z "$BRANCH_NAME" ]]; then
+        BRANCH_NAME="$1"; shift
+      else
+        echo "Unexpected argument: $1" >&2; usage >&2; exit 1
+      fi
+      ;;
+  esac
+done
+
+if [[ -z "$BRANCH_NAME" ]]; then
+  echo "Error: branch-name is required" >&2
+  usage >&2
+  exit 1
+fi
+
+# Verify git repo
+git rev-parse --git-dir &>/dev/null || { echo "Error: not a git repository" >&2; exit 1; }
+REPO_ROOT=$(git rev-parse --show-toplevel)
+
+# Determine worktree parent directory
+WORKTREE_PARENT=""
+
+if [[ -n "$DIR_OVERRIDE" ]]; then
+  WORKTREE_PARENT="$DIR_OVERRIDE"
+elif [[ -d "$REPO_ROOT/.worktrees" ]]; then
+  WORKTREE_PARENT="$REPO_ROOT/.worktrees"
+  echo "Detected: .worktrees/" >&2
+elif [[ -d "$REPO_ROOT/worktrees" ]]; then
+  WORKTREE_PARENT="$REPO_ROOT/worktrees"
+  echo "Detected: worktrees/" >&2
+elif [[ -f "$REPO_ROOT/CLAUDE.md" ]]; then
+  # Check CLAUDE.md for worktree directory preference
+  wt_dir=$(grep -i 'worktree.*director' "$REPO_ROOT/CLAUDE.md" 2>/dev/null | head -1 | sed 's/.*[`"]\([^`"]*\)[`"].*/\1/' || true)
+  if [[ -n "$wt_dir" ]]; then
+    WORKTREE_PARENT="$REPO_ROOT/$wt_dir"
+    echo "Detected from CLAUDE.md: $wt_dir" >&2
+  fi
+fi
+
+if [[ -z "$WORKTREE_PARENT" ]]; then
+  echo "Error: no worktree directory detected." >&2
+  echo "Suggestion: create .worktrees/ in the repo root, or use --dir <path>" >&2
+  exit 1
+fi
+
+# Ensure parent directory exists
+mkdir -p "$WORKTREE_PARENT"
+
+# Safety check: verify project-local directories are gitignored
+WORKTREE_RELPATH="${WORKTREE_PARENT#$REPO_ROOT/}"
+if [[ "$WORKTREE_PARENT" == "$REPO_ROOT"/* ]]; then
+  if ! git check-ignore -q "$WORKTREE_RELPATH" 2>/dev/null; then
+    echo "Warning: $WORKTREE_RELPATH is not in .gitignore — adding it" >&2
+    echo "$WORKTREE_RELPATH" >> "$REPO_ROOT/.gitignore"
+    git -C "$REPO_ROOT" add .gitignore
+    git -C "$REPO_ROOT" commit -m "Add $WORKTREE_RELPATH to .gitignore"
+    echo "Committed .gitignore update" >&2
+  fi
+fi
+
+WORKTREE_PATH="$WORKTREE_PARENT/$BRANCH_NAME"
+
+# Create worktree
+echo "Creating worktree at $WORKTREE_PATH..." >&2
+git worktree add "$WORKTREE_PATH" -b "$BRANCH_NAME" || { echo "Error: git worktree add failed" >&2; exit 1; }
+
+# Install dependencies
+if [[ "$DO_INSTALL" == true ]]; then
+  echo "Installing dependencies..." >&2
+  cd "$WORKTREE_PATH"
+
+  if [[ -f package.json ]]; then
+    echo "Detected: package.json → npm install" >&2
+    npm install 2>&1 >&2
+  elif [[ -f Cargo.toml ]]; then
+    echo "Detected: Cargo.toml → cargo build" >&2
+    cargo build 2>&1 >&2
+  elif [[ -f requirements.txt ]]; then
+    echo "Detected: requirements.txt → pip install" >&2
+    pip install -r requirements.txt 2>&1 >&2
+  elif [[ -f pyproject.toml ]]; then
+    if [[ -f poetry.lock ]]; then
+      echo "Detected: pyproject.toml → poetry install" >&2
+      poetry install 2>&1 >&2
+    else
+      echo "Detected: pyproject.toml → pip install -e ." >&2
+      pip install -e . 2>&1 >&2
+    fi
+  elif [[ -f go.mod ]]; then
+    echo "Detected: go.mod → go mod download" >&2
+    go mod download 2>&1 >&2
+  else
+    echo "No dependency file detected, skipping install" >&2
+  fi
+fi
+
+# Run baseline tests
+if [[ "$DO_TEST" == true ]]; then
+  echo "Running baseline tests..." >&2
+  cd "$WORKTREE_PATH"
+
+  RUN_TESTS="$HOME/.agents/bin/run-tests"
+  if [[ -x "$RUN_TESTS" ]]; then
+    if "$RUN_TESTS"; then
+      echo "Baseline tests pass" >&2
+    else
+      echo "Warning: baseline tests failed (exit $?)" >&2
+      echo "$WORKTREE_PATH"
+      exit 2
+    fi
+  else
+    echo "Warning: run-tests not found at $RUN_TESTS" >&2
+    echo "$WORKTREE_PATH"
+    exit 2
+  fi
+fi
+
+echo "$WORKTREE_PATH"

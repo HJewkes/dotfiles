@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: review-prep [--base <ref>] [--json] [--help]
+
+Gather git context for code review agents.
+
+Options:
+  --base <ref>  Base reference to diff against (default: auto-detect origin/main or origin/master)
+  --json        Output as JSON object
+  --help        Show this help message
+
+Output fields:
+  BASE_SHA       Base commit SHA
+  HEAD_SHA       Current HEAD SHA
+  DIFF_STATS     Diffstat summary
+  CHANGED_FILES  List of changed files
+  COMMIT_LOG     Commit log from base to HEAD
+
+Exit codes:
+  0  Success
+  1  Not a git repo or base ref not found
+EOF
+}
+
+BASE_REF=""
+JSON_OUTPUT=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --base) BASE_REF="$2"; shift 2 ;;
+    --json) JSON_OUTPUT=true; shift ;;
+    --help) usage; exit 0 ;;
+    *) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
+  esac
+done
+
+# Verify git repo
+git rev-parse --git-dir &>/dev/null || { echo "Not a git repository" >&2; exit 1; }
+
+# Auto-detect base ref
+if [[ -z "$BASE_REF" ]]; then
+  if git rev-parse --verify origin/main &>/dev/null; then
+    BASE_REF="origin/main"
+  elif git rev-parse --verify origin/master &>/dev/null; then
+    BASE_REF="origin/master"
+  else
+    echo "Could not find origin/main or origin/master" >&2
+    exit 1
+  fi
+  echo "Auto-detected base: $BASE_REF" >&2
+fi
+
+BASE_SHA=$(git rev-parse --verify "$BASE_REF") || { echo "Invalid base ref: $BASE_REF" >&2; exit 1; }
+HEAD_SHA=$(git rev-parse HEAD)
+DIFF_STATS=$(git diff --stat "$BASE_SHA"...HEAD)
+CHANGED_FILES=$(git diff --name-only "$BASE_SHA"...HEAD)
+COMMIT_LOG=$(git log --oneline "$BASE_SHA"...HEAD)
+
+if [[ "$JSON_OUTPUT" == true ]]; then
+  # Escape strings for JSON
+  escape_json() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | awk '{printf "%s\\n", $0}' | sed '$ s/\\n$//'
+  }
+
+  cat <<EOF
+{
+  "BASE_SHA": "$(escape_json "$BASE_SHA")",
+  "HEAD_SHA": "$(escape_json "$HEAD_SHA")",
+  "DIFF_STATS": "$(escape_json "$DIFF_STATS")",
+  "CHANGED_FILES": "$(escape_json "$CHANGED_FILES")",
+  "COMMIT_LOG": "$(escape_json "$COMMIT_LOG")"
+}
+EOF
+else
+  cat <<EOF
+BASE_SHA=$BASE_SHA
+HEAD_SHA=$HEAD_SHA
+
+DIFF_STATS:
+$DIFF_STATS
+
+CHANGED_FILES:
+$CHANGED_FILES
+
+COMMIT_LOG:
+$COMMIT_LOG
+EOF
+fi
