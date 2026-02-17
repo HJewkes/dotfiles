@@ -60,10 +60,13 @@ Present comparison and recommendation to user for approval.
 ### Step 5: Install
 
 ```bash
+# From npm marketplace
 npx skills add <package> -g -y
-```
 
-Or manual clone to `~/.local/share/chezmoi/private_dot_agents/skills/` for non-npm skills, then add symlink files to `private_dot_claude/skills/` and `private_dot_cursor/skills/`, then run `chezmoi apply`. See `skill-conventions` for details.
+# From GitHub (handles chezmoi source, symlinks, and skill-lock automatically)
+skill-manager install <owner/repo>
+skill-manager install <owner/repo> skills/<skill-name>  # specific skill path
+```
 
 ### Step 6: Combine
 
@@ -73,7 +76,7 @@ When candidates have complementary strengths, build a unified skill:
 2. Resolve conflicts between approaches (prompts, permissions, workflow order)
 3. Build unified SKILL.md following writing-skills conventions
 4. Attribute source skills in a comment at the top
-5. Install to chezmoi source (`private_dot_agents/skills/`), add symlink files, run `chezmoi apply`, and verify triggers work
+5. `skill-manager create <name>`, edit the SKILL.md, and verify triggers work
 
 ### Step 7: Write Custom
 

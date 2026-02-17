@@ -1,0 +1,791 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: skill-manager <command> [options]
+
+Manage agentic skills across chezmoi, Claude Code, and Cursor.
+
+Commands:
+  create <name>                Scaffold a new skill
+  install <owner/repo> [path]  Install skill from GitHub
+  remove <name>                Remove skill and all symlinks
+  list [--json]                List all skills with status
+  validate [<name>]            Validate skill conventions
+  sync                         Re-derive all symlinks from source
+
+Options:
+  --help    Show this help message
+
+Exit codes:
+  0  Success
+  1  Error
+  2  Warnings found (validate only)
+EOF
+}
+
+# ── Constants ─────────────────────────────────────────────────────
+
+CHEZMOI_SOURCE="$(chezmoi source-path)"
+AGENTS_DIR="$CHEZMOI_SOURCE/private_dot_agents"
+CLAUDE_DIR="$CHEZMOI_SOURCE/private_dot_claude"
+CURSOR_DIR="$CHEZMOI_SOURCE/private_dot_cursor"
+SKILLS_DIR="$AGENTS_DIR/skills"
+BIN_DIR="$AGENTS_DIR/bin"
+LOCK_FILE="$AGENTS_DIR/skill-lock.json"
+
+# ── Helpers ───────────────────────────────────────────────────────
+
+die() { echo "Error: $1" >&2; exit 1; }
+
+is_kebab_case() {
+  [[ "$1" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]]
+}
+
+kebab_to_title() {
+  echo "$1" | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)}1'
+}
+
+skill_exists() {
+  [[ -d "$SKILLS_DIR/$1" ]]
+}
+
+ensure_dirs() {
+  mkdir -p "$SKILLS_DIR" "$BIN_DIR" "$CLAUDE_DIR/skills" "$CURSOR_DIR/skills"
+}
+
+create_claude_symlink() {
+  local name="$1"
+  echo -n "../../.agents/skills/$name" > "$CLAUDE_DIR/skills/symlink_$name"
+}
+
+create_cursor_symlink() {
+  local name="$1"
+  echo -n "../../.agents/skills/$name" > "$CURSOR_DIR/skills/symlink_$name"
+}
+
+create_bin_symlink() {
+  local script_name="$1" skill_name="$2"
+  echo -n "../skills/$skill_name/bin/$script_name" > "$BIN_DIR/symlink_$script_name"
+}
+
+remove_lock_entry() {
+  local name="$1"
+  if [[ -f "$LOCK_FILE" ]] && command -v jq &>/dev/null; then
+    local tmp
+    tmp=$(mktemp)
+    jq "del(.skills[\"$name\"])" "$LOCK_FILE" > "$tmp" && mv "$tmp" "$LOCK_FILE"
+  fi
+}
+
+folder_hash() {
+  find "$1" -type f -print0 | sort -z | xargs -0 shasum -a 1 | shasum -a 1 | awk '{print $1}'
+}
+
+# ── Commands ──────────────────────────────────────────────────────
+
+cmd_create() {
+  local name="" no_cursor=false dry_run=false bin_name=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --no-cursor) no_cursor=true; shift ;;
+      --bin) bin_name="$2"; shift 2 ;;
+      --dry-run) dry_run=true; shift ;;
+      --help) cat <<'EOF'
+Usage: skill-manager create <name> [--no-cursor] [--bin <script>] [--dry-run]
+
+Scaffold a new skill in the chezmoi source with all required symlinks.
+
+Options:
+  --no-cursor    Skip Cursor symlink
+  --bin <name>   Also scaffold a bin script with standard template
+  --dry-run      Show what would be created without writing
+EOF
+        exit 0 ;;
+      -*) die "Unknown option: $1" ;;
+      *) name="$1"; shift ;;
+    esac
+  done
+
+  [[ -n "$name" ]] || die "Skill name required. Usage: skill-manager create <name>"
+  is_kebab_case "$name" || die "Name must be kebab-case (lowercase letters, numbers, hyphens): $name"
+  skill_exists "$name" && die "Skill already exists: $name"
+
+  local title
+  title="$(kebab_to_title "$name")"
+
+  local files=(
+    "$SKILLS_DIR/$name/SKILL.md"
+    "$CLAUDE_DIR/skills/symlink_$name"
+  )
+  [[ "$no_cursor" == false ]] && files+=("$CURSOR_DIR/skills/symlink_$name")
+
+  if [[ -n "$bin_name" ]]; then
+    is_kebab_case "$bin_name" || die "Bin name must be kebab-case: $bin_name"
+    files+=("$SKILLS_DIR/$name/bin/executable_$bin_name")
+    files+=("$BIN_DIR/symlink_$bin_name")
+  fi
+
+  if [[ "$dry_run" == true ]]; then
+    echo "Would create:"
+    for f in "${files[@]}"; do
+      echo "  ${f#"$CHEZMOI_SOURCE"/}"
+    done
+    exit 0
+  fi
+
+  ensure_dirs
+  mkdir -p "$SKILLS_DIR/$name"
+
+  cat > "$SKILLS_DIR/$name/SKILL.md" <<SKILL
+---
+name: $name
+description: Use when
+---
+
+# $title
+SKILL
+
+  create_claude_symlink "$name"
+  [[ "$no_cursor" == false ]] && create_cursor_symlink "$name"
+
+  if [[ -n "$bin_name" ]]; then
+    mkdir -p "$SKILLS_DIR/$name/bin"
+    cat > "$SKILLS_DIR/$name/bin/executable_$bin_name" <<SCRIPT
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: $bin_name [--help]
+
+Description here.
+
+Options:
+  --help    Show this help message
+
+Exit codes:
+  0  Success
+  1  Error
+USAGE
+}
+
+while [[ \$# -gt 0 ]]; do
+  case "\$1" in
+    --help) usage; exit 0 ;;
+    *) echo "Unknown option: \$1" >&2; usage >&2; exit 1 ;;
+  esac
+done
+SCRIPT
+    chmod +x "$SKILLS_DIR/$name/bin/executable_$bin_name"
+    create_bin_symlink "$bin_name" "$name"
+  fi
+
+  chezmoi apply >&2
+  echo "Created skill: $name" >&2
+  echo "$SKILLS_DIR/$name/SKILL.md"
+}
+
+cmd_install() {
+  local source="" skill_path="" no_cursor=false dry_run=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --no-cursor) no_cursor=true; shift ;;
+      --dry-run) dry_run=true; shift ;;
+      --help) cat <<'EOF'
+Usage: skill-manager install <owner/repo> [skill-path] [--no-cursor] [--dry-run]
+
+Install a skill from a GitHub repository.
+
+Arguments:
+  owner/repo    GitHub repository (e.g., obra/superpowers)
+  skill-path    Path to skill dir within repo (auto-detected if omitted)
+
+Options:
+  --no-cursor   Skip Cursor symlink
+  --dry-run     Show what would be installed without writing
+EOF
+        exit 0 ;;
+      -*) die "Unknown option: $1" ;;
+      *)
+        if [[ -z "$source" ]]; then
+          source="$1"
+        else
+          skill_path="$1"
+        fi
+        shift ;;
+    esac
+  done
+
+  [[ -n "$source" ]] || die "Repository required. Usage: skill-manager install <owner/repo> [path]"
+  [[ "$source" =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$ ]] || die "Invalid repo format. Use owner/repo"
+
+  local tmpdir
+  tmpdir=$(mktemp -d)
+  trap "rm -rf '$tmpdir'" EXIT
+
+  echo "Cloning $source..." >&2
+  git clone --depth 1 "https://github.com/$source.git" "$tmpdir/repo" 2>&2 || die "Failed to clone $source"
+
+  local repo_dir="$tmpdir/repo"
+
+  # Auto-detect skill(s)
+  if [[ -n "$skill_path" ]]; then
+    local full_path="$repo_dir/$skill_path"
+    [[ -f "$full_path/SKILL.md" ]] || die "No SKILL.md found at $skill_path"
+    _install_one_skill "$full_path" "$source" "$no_cursor" "$dry_run"
+  elif [[ -f "$repo_dir/SKILL.md" ]]; then
+    _install_one_skill "$repo_dir" "$source" "$no_cursor" "$dry_run"
+  elif [[ -d "$repo_dir/skills" ]]; then
+    local count=0
+    for skill_dir in "$repo_dir/skills"/*/; do
+      [[ -f "$skill_dir/SKILL.md" ]] || continue
+      _install_one_skill "$skill_dir" "$source" "$no_cursor" "$dry_run"
+      ((count++))
+    done
+    [[ $count -gt 0 ]] || die "No skills found in $source/skills/"
+    echo "Installed $count skills from $source" >&2
+  else
+    die "No SKILL.md found in $source. Specify a path."
+  fi
+
+  if [[ "$dry_run" == false ]]; then
+    chezmoi apply >&2
+  fi
+}
+
+_install_one_skill() {
+  local src_dir="$1" source="$2" no_cursor="$3" dry_run="$4"
+  local name
+  name=$(basename "$src_dir")
+
+  is_kebab_case "$name" || die "Skill name not kebab-case: $name"
+
+  # Validate before installing
+  local warnings
+  warnings=$(_validate_skill_dir "$src_dir" "$name" 2>&1) || {
+    echo "Validation failed for $name:" >&2
+    echo "$warnings" >&2
+    die "Fix validation errors before installing"
+  }
+
+  if [[ "$dry_run" == true ]]; then
+    echo "Would install: $name (from $source)"
+    return
+  fi
+
+  if skill_exists "$name"; then
+    echo "Updating existing skill: $name" >&2
+    rm -rf "$SKILLS_DIR/$name"
+  fi
+
+  ensure_dirs
+  cp -R "$src_dir" "$SKILLS_DIR/$name"
+
+  create_claude_symlink "$name"
+  [[ "$no_cursor" == false ]] && create_cursor_symlink "$name"
+
+  # Create bin symlinks for any executable_ files
+  if [[ -d "$SKILLS_DIR/$name/bin" ]]; then
+    for exe in "$SKILLS_DIR/$name/bin"/executable_*; do
+      [[ -f "$exe" ]] || continue
+      local script_name="${exe##*/executable_}"
+      create_bin_symlink "$script_name" "$name"
+      echo "  + bin/$script_name" >&2
+    done
+  fi
+
+  # Update skill-lock.json
+  if [[ -f "$LOCK_FILE" ]] && command -v jq &>/dev/null; then
+    local hash timestamp
+    hash=$(folder_hash "$SKILLS_DIR/$name")
+    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+    local tmp
+    tmp=$(mktemp)
+    jq --arg name "$name" \
+       --arg source "$source" \
+       --arg url "https://github.com/$source.git" \
+       --arg hash "$hash" \
+       --arg ts "$timestamp" \
+       '.skills[$name] = {
+          source: $source,
+          sourceType: "github",
+          sourceUrl: $url,
+          skillPath: ("skills/" + $name + "/SKILL.md"),
+          skillFolderHash: $hash,
+          installedAt: (.skills[$name].installedAt // $ts),
+          updatedAt: $ts
+        }' "$LOCK_FILE" > "$tmp" && mv "$tmp" "$LOCK_FILE"
+  fi
+
+  echo "Installed: $name" >&2
+}
+
+cmd_remove() {
+  local name="" dry_run=false keep_lock=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dry-run) dry_run=true; shift ;;
+      --keep-lock) keep_lock=true; shift ;;
+      --help) cat <<'EOF'
+Usage: skill-manager remove <name> [--dry-run] [--keep-lock]
+
+Remove a skill and all its symlinks.
+
+Options:
+  --dry-run      Show what would be removed without deleting
+  --keep-lock    Keep the skill-lock.json entry
+EOF
+        exit 0 ;;
+      -*) die "Unknown option: $1" ;;
+      *) name="$1"; shift ;;
+    esac
+  done
+
+  [[ -n "$name" ]] || die "Skill name required. Usage: skill-manager remove <name>"
+  skill_exists "$name" || die "Skill not found: $name"
+
+  local removals=("$SKILLS_DIR/$name")
+  [[ -f "$CLAUDE_DIR/skills/symlink_$name" ]] && removals+=("$CLAUDE_DIR/skills/symlink_$name")
+  [[ -f "$CURSOR_DIR/skills/symlink_$name" ]] && removals+=("$CURSOR_DIR/skills/symlink_$name")
+
+  # Find bin symlinks pointing into this skill
+  for symlink_file in "$BIN_DIR"/symlink_*; do
+    [[ -f "$symlink_file" ]] || continue
+    local target
+    target=$(cat "$symlink_file")
+    if [[ "$target" == *"skills/$name/"* ]]; then
+      removals+=("$symlink_file")
+    fi
+  done
+
+  if [[ "$dry_run" == true ]]; then
+    echo "Would remove:"
+    for f in "${removals[@]}"; do
+      echo "  ${f#"$CHEZMOI_SOURCE"/}"
+    done
+    [[ "$keep_lock" == false ]] && echo "  skill-lock.json entry: $name"
+    exit 0
+  fi
+
+  for f in "${removals[@]}"; do
+    rm -rf "$f"
+  done
+
+  [[ "$keep_lock" == false ]] && remove_lock_entry "$name"
+
+  chezmoi apply >&2
+
+  # Clean up deployed files (chezmoi doesn't auto-remove previously managed content)
+  rm -rf "$HOME/.agents/skills/$name"
+  rm -f "$HOME/.claude/skills/$name"
+  rm -f "$HOME/.cursor/skills/$name"
+  # Clean up deployed bin symlinks
+  for symlink_file in "$BIN_DIR"/symlink_*; do
+    [[ -f "$symlink_file" ]] && continue  # still in source = skip
+    local script_name="${symlink_file##*/symlink_}"
+    rm -f "$HOME/.agents/bin/$script_name"
+  done
+
+  echo "Removed: $name" >&2
+}
+
+cmd_list() {
+  local json=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) json=true; shift ;;
+      --help) cat <<'EOF'
+Usage: skill-manager list [--json]
+
+List all skills with status information.
+
+Options:
+  --json    Output as JSON
+EOF
+        exit 0 ;;
+      -*) die "Unknown option: $1" ;;
+      *) die "Unknown argument: $1" ;;
+    esac
+  done
+
+  if [[ "$json" == true ]]; then
+    _list_json
+  else
+    _list_table
+  fi
+}
+
+_list_table() {
+  printf "%-40s %-8s %-8s %-6s %-20s\n" "SKILL" "CLAUDE" "CURSOR" "BIN" "SOURCE"
+  printf "%-40s %-8s %-8s %-6s %-20s\n" "-----" "------" "------" "---" "------"
+
+  for skill_dir in "$SKILLS_DIR"/*/; do
+    [[ -d "$skill_dir" ]] || continue
+    local name
+    name=$(basename "$skill_dir")
+
+    local claude="no" cursor="no" has_bin="no" source="local"
+
+    [[ -f "$CLAUDE_DIR/skills/symlink_$name" ]] && claude="yes"
+    [[ -f "$CURSOR_DIR/skills/symlink_$name" ]] && cursor="yes"
+
+    # Check for bin scripts
+    if compgen -G "$skill_dir/bin/executable_*" >/dev/null 2>&1; then
+      has_bin="yes"
+    fi
+
+    # Check skill-lock for source
+    if [[ -f "$LOCK_FILE" ]] && command -v jq &>/dev/null; then
+      local lock_source
+      lock_source=$(jq -r ".skills[\"$name\"].source // empty" "$LOCK_FILE" 2>/dev/null)
+      [[ -n "$lock_source" ]] && source="$lock_source"
+    fi
+
+    printf "%-40s %-8s %-8s %-6s %-20s\n" "$name" "$claude" "$cursor" "$has_bin" "$source"
+  done
+}
+
+_list_json() {
+  local first=true
+  echo "["
+  for skill_dir in "$SKILLS_DIR"/*/; do
+    [[ -d "$skill_dir" ]] || continue
+    local name
+    name=$(basename "$skill_dir")
+
+    local claude=false cursor=false has_bin=false source="local"
+
+    [[ -f "$CLAUDE_DIR/skills/symlink_$name" ]] && claude=true
+    [[ -f "$CURSOR_DIR/skills/symlink_$name" ]] && cursor=true
+
+    if compgen -G "$skill_dir/bin/executable_*" >/dev/null 2>&1; then
+      has_bin=true
+    fi
+
+    if [[ -f "$LOCK_FILE" ]] && command -v jq &>/dev/null; then
+      local lock_source
+      lock_source=$(jq -r ".skills[\"$name\"].source // empty" "$LOCK_FILE" 2>/dev/null)
+      [[ -n "$lock_source" ]] && source="$lock_source"
+    fi
+
+    [[ "$first" == true ]] && first=false || echo ","
+    printf '  {"name":"%s","claude":%s,"cursor":%s,"bin":%s,"source":"%s"}' \
+      "$name" "$claude" "$cursor" "$has_bin" "$source"
+  done
+  echo ""
+  echo "]"
+}
+
+cmd_validate() {
+  local target="" errors=0 warnings=0
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --help) cat <<'EOF'
+Usage: skill-manager validate [<name>]
+
+Validate skill conventions. Validates all skills if no name given.
+
+Checks:
+  - Directory name is kebab-case
+  - SKILL.md exists with valid frontmatter
+  - Description starts with "Use when"
+  - Name field matches directory name
+  - Claude/Cursor symlink files exist
+  - Bin scripts have discovery symlinks
+
+Exit codes:
+  0  All checks pass
+  1  Errors found
+  2  Warnings only
+EOF
+        exit 0 ;;
+      -*) die "Unknown option: $1" ;;
+      *) target="$1"; shift ;;
+    esac
+  done
+
+  if [[ -n "$target" ]]; then
+    skill_exists "$target" || die "Skill not found: $target"
+    _validate_skill "$target"
+    errors=$?
+  else
+    for skill_dir in "$SKILLS_DIR"/*/; do
+      [[ -d "$skill_dir" ]] || continue
+      local name
+      name=$(basename "$skill_dir")
+      local result=0
+      _validate_skill "$name" || result=$?
+      if [[ $result -eq 1 ]]; then
+        ((errors++))
+      elif [[ $result -eq 2 ]]; then
+        ((warnings++))
+      fi
+    done
+  fi
+
+  if [[ $errors -gt 0 ]]; then
+    echo "$errors skill(s) with errors, $warnings with warnings" >&2
+    exit 1
+  elif [[ $warnings -gt 0 ]]; then
+    echo "All skills valid, $warnings warning(s)" >&2
+    exit 2
+  else
+    echo "All skills valid" >&2
+    exit 0
+  fi
+}
+
+_validate_skill() {
+  local name="$1"
+  _validate_skill_dir "$SKILLS_DIR/$name" "$name"
+}
+
+_validate_skill_dir() {
+  local dir="$1" name="$2"
+  local has_error=false has_warning=false
+
+  # Check kebab-case
+  if ! is_kebab_case "$name"; then
+    echo "ERROR [$name]: directory name not kebab-case" >&2
+    has_error=true
+  fi
+
+  # Check SKILL.md exists
+  if [[ ! -f "$dir/SKILL.md" ]]; then
+    echo "ERROR [$name]: SKILL.md not found" >&2
+    has_error=true
+    # Can't check frontmatter without the file
+    [[ "$has_error" == true ]] && return 1 || return 0
+  fi
+
+  # Parse frontmatter
+  local frontmatter=""
+  if head -1 "$dir/SKILL.md" | grep -q "^---"; then
+    frontmatter=$(sed -n '2,/^---$/p' "$dir/SKILL.md" | sed '$d')
+  fi
+
+  if [[ -z "$frontmatter" ]]; then
+    echo "ERROR [$name]: no YAML frontmatter found" >&2
+    has_error=true
+  else
+    # Check frontmatter size
+    local fm_size
+    fm_size=$(echo "$frontmatter" | wc -c | tr -d ' ')
+    if [[ $fm_size -gt 1024 ]]; then
+      echo "ERROR [$name]: frontmatter exceeds 1024 chars ($fm_size)" >&2
+      has_error=true
+    fi
+
+    # Check name field exists and matches
+    local fm_name
+    fm_name=$(echo "$frontmatter" | grep "^name:" | sed 's/^name:[[:space:]]*//')
+    if [[ -z "$fm_name" ]]; then
+      echo "ERROR [$name]: frontmatter missing 'name' field" >&2
+      has_error=true
+    elif [[ "$fm_name" != "$name" ]]; then
+      echo "WARN  [$name]: frontmatter name '$fm_name' doesn't match directory '$name'" >&2
+      has_warning=true
+    fi
+
+    # Check name field characters
+    if [[ -n "$fm_name" ]] && ! [[ "$fm_name" =~ ^[a-zA-Z0-9-]+$ ]]; then
+      echo "ERROR [$name]: name field contains invalid characters (use letters, numbers, hyphens)" >&2
+      has_error=true
+    fi
+
+    # Check description field
+    local fm_desc
+    fm_desc=$(echo "$frontmatter" | grep "^description:" | sed 's/^description:[[:space:]]*//')
+    if [[ -z "$fm_desc" ]]; then
+      echo "ERROR [$name]: frontmatter missing 'description' field" >&2
+      has_error=true
+    elif ! echo "$fm_desc" | grep -qi "^use when"; then
+      echo "WARN  [$name]: description should start with 'Use when'" >&2
+      has_warning=true
+    fi
+
+    # Check for unexpected fields
+    local known_fields
+    known_fields=$(echo "$frontmatter" | grep -c "^\(name\|description\):")
+    local total_fields
+    total_fields=$(echo "$frontmatter" | grep -c "^[a-zA-Z]")
+    if [[ $total_fields -gt $known_fields ]]; then
+      echo "WARN  [$name]: frontmatter has extra fields (only name, description allowed)" >&2
+      has_warning=true
+    fi
+  fi
+
+  # Check Claude symlink (only for chezmoi source validation)
+  if [[ -d "$CLAUDE_DIR/skills" ]] && [[ ! -f "$CLAUDE_DIR/skills/symlink_$name" ]]; then
+    echo "WARN  [$name]: missing Claude symlink file" >&2
+    has_warning=true
+  fi
+
+  # Check bin symlink integrity
+  if [[ -d "$dir/bin" ]]; then
+    for exe in "$dir/bin"/executable_*; do
+      [[ -f "$exe" ]] || continue
+      local script_name="${exe##*/executable_}"
+      if [[ ! -f "$BIN_DIR/symlink_$script_name" ]]; then
+        echo "WARN  [$name]: bin script '$script_name' missing discovery symlink" >&2
+        has_warning=true
+      fi
+    done
+  fi
+
+  if [[ "$has_error" == true ]]; then
+    return 1
+  elif [[ "$has_warning" == true ]]; then
+    return 2
+  fi
+  return 0
+}
+
+cmd_sync() {
+  local dry_run=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dry-run) dry_run=true; shift ;;
+      --help) cat <<'EOF'
+Usage: skill-manager sync [--dry-run]
+
+Re-derive all symlink files from the chezmoi source. Fixes drift,
+adds missing symlinks, removes orphaned ones.
+
+Options:
+  --dry-run    Show what would change without writing
+EOF
+        exit 0 ;;
+      -*) die "Unknown option: $1" ;;
+      *) die "Unknown argument: $1" ;;
+    esac
+  done
+
+  local added=0 removed=0
+
+  ensure_dirs
+
+  # Ensure all skills have Claude + Cursor symlinks
+  for skill_dir in "$SKILLS_DIR"/*/; do
+    [[ -d "$skill_dir" ]] || continue
+    local name
+    name=$(basename "$skill_dir")
+
+    if [[ ! -f "$CLAUDE_DIR/skills/symlink_$name" ]]; then
+      if [[ "$dry_run" == true ]]; then
+        echo "Would add: Claude symlink for $name"
+      else
+        create_claude_symlink "$name"
+        echo "Added Claude symlink: $name" >&2
+      fi
+      ((added++))
+    fi
+
+    if [[ ! -f "$CURSOR_DIR/skills/symlink_$name" ]]; then
+      if [[ "$dry_run" == true ]]; then
+        echo "Would add: Cursor symlink for $name"
+      else
+        create_cursor_symlink "$name"
+        echo "Added Cursor symlink: $name" >&2
+      fi
+      ((added++))
+    fi
+
+    # Ensure bin scripts have discovery symlinks
+    if [[ -d "$skill_dir/bin" ]]; then
+      for exe in "$skill_dir/bin"/executable_*; do
+        [[ -f "$exe" ]] || continue
+        local script_name="${exe##*/executable_}"
+        if [[ ! -f "$BIN_DIR/symlink_$script_name" ]]; then
+          if [[ "$dry_run" == true ]]; then
+            echo "Would add: bin symlink for $script_name"
+          else
+            create_bin_symlink "$script_name" "$name"
+            echo "Added bin symlink: $script_name" >&2
+          fi
+          ((added++))
+        fi
+      done
+    fi
+  done
+
+  # Remove orphaned Claude symlinks
+  for symlink_file in "$CLAUDE_DIR/skills"/symlink_*; do
+    [[ -f "$symlink_file" ]] || continue
+    local name="${symlink_file##*/symlink_}"
+    if ! skill_exists "$name"; then
+      if [[ "$dry_run" == true ]]; then
+        echo "Would remove: orphaned Claude symlink $name"
+      else
+        rm "$symlink_file"
+        echo "Removed orphaned Claude symlink: $name" >&2
+      fi
+      ((removed++))
+    fi
+  done
+
+  # Remove orphaned Cursor symlinks
+  for symlink_file in "$CURSOR_DIR/skills"/symlink_*; do
+    [[ -f "$symlink_file" ]] || continue
+    local name="${symlink_file##*/symlink_}"
+    if ! skill_exists "$name"; then
+      if [[ "$dry_run" == true ]]; then
+        echo "Would remove: orphaned Cursor symlink $name"
+      else
+        rm "$symlink_file"
+        echo "Removed orphaned Cursor symlink: $name" >&2
+      fi
+      ((removed++))
+    fi
+  done
+
+  # Remove orphaned bin symlinks
+  for symlink_file in "$BIN_DIR"/symlink_*; do
+    [[ -f "$symlink_file" ]] || continue
+    local target
+    target=$(cat "$symlink_file")
+    # Resolve the target relative to the bin dir
+    if [[ "$target" == ../skills/* ]]; then
+      local target_path="$AGENTS_DIR/${target#../}"
+      if [[ ! -f "$target_path" ]]; then
+        local script_name="${symlink_file##*/symlink_}"
+        if [[ "$dry_run" == true ]]; then
+          echo "Would remove: orphaned bin symlink $script_name"
+        else
+          rm "$symlink_file"
+          echo "Removed orphaned bin symlink: $script_name" >&2
+        fi
+        ((removed++))
+      fi
+    fi
+  done
+
+  if [[ "$dry_run" == false ]]; then
+    chezmoi apply >&2
+  fi
+
+  echo "Sync complete: $added added, $removed removed" >&2
+}
+
+# ── Main ──────────────────────────────────────────────────────────
+
+[[ $# -gt 0 ]] || { usage; exit 1; }
+
+case "$1" in
+  create)   shift; cmd_create "$@" ;;
+  install)  shift; cmd_install "$@" ;;
+  remove)   shift; cmd_remove "$@" ;;
+  list)     shift; cmd_list "$@" ;;
+  validate) shift; cmd_validate "$@" ;;
+  sync)     shift; cmd_sync "$@" ;;
+  --help)   usage; exit 0 ;;
+  *)        die "Unknown command: $1. Run 'skill-manager --help' for usage." ;;
+esac

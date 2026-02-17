@@ -21,23 +21,39 @@ Claude Code discovers skills/agents via `~/.claude/`. The symlinks point back to
 
 All files in `~/.agents/` are managed by **chezmoi**. The chezmoi source is at `~/.local/share/chezmoi/private_dot_agents/`.
 
+Use `~/.agents/bin/skill-manager` for all skill lifecycle operations. It handles chezmoi source paths, symlink creation, and convention enforcement automatically.
+
 To sync changes across machines: edit in chezmoi source → `chezmoi apply` → push the chezmoi repo.
 
 ## Creating a New Skill
 
 ```bash
-# 1. Create in chezmoi source
-mkdir -p ~/.local/share/chezmoi/private_dot_agents/skills/<skill-name>
-# Write SKILL.md (see writing-skills for content guidelines)
-# Add references/ dir if needed
+skill-manager create <skill-name>
+# Edit the SKILL.md at the printed path
+# Add references/ files as needed
+```
 
-# 2. Add symlinks for tool discovery
-echo -n "../../.agents/skills/<skill-name>" > ~/.local/share/chezmoi/private_dot_claude/skills/symlink_<skill-name>
-# Repeat for Cursor if shared:
-echo -n "../../.agents/skills/<skill-name>" > ~/.local/share/chezmoi/private_dot_cursor/skills/symlink_<skill-name>
+With a bin script: `skill-manager create <skill-name> --bin <script-name>`
 
-# 3. Apply
-chezmoi apply
+## Installing a Skill from GitHub
+
+```bash
+skill-manager install <owner/repo>           # auto-detect skills in repo
+skill-manager install <owner/repo> skills/x  # specific skill path
+```
+
+## Removing a Skill
+
+```bash
+skill-manager remove <skill-name>
+```
+
+## Validating & Syncing
+
+```bash
+skill-manager validate              # check all skills against conventions
+skill-manager validate <skill-name> # check one skill
+skill-manager sync                  # fix missing/orphaned symlinks
 ```
 
 ## Creating a New Agent
