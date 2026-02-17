@@ -47,11 +47,19 @@ Concrete results
 
 ## Directory Structure
 
+All skills are managed by chezmoi. Edit in the chezmoi source, then `chezmoi apply`.
+
 ```
-skills/
+~/.local/share/chezmoi/private_dot_agents/skills/   ← edit here (source of truth)
   skill-name/
     SKILL.md              # Main reference (required)
+    references/           # Deep-dive docs, examples (optional)
+    bin/                  # Co-located scripts with executable_ prefix (optional)
     supporting-file.*     # Only if needed
+
+~/.agents/skills/         ← deployed by chezmoi (real files)
+~/.claude/skills/         ← symlinks to ~/.agents/skills/
+~/.cursor/skills/         ← symlinks to ~/.agents/skills/
 ```
 
 **Flat namespace** - all skills in one searchable namespace

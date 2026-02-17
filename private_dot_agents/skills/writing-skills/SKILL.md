@@ -9,7 +9,7 @@ description: Use when creating new skills, editing existing skills, or verifying
 
 **Writing skills IS Test-Driven Development applied to process documentation.**
 
-**Personal skills live in agent-specific directories (`~/.claude/skills` for Claude Code, `~/.agents/skills/` for Codex)**
+**Skills are managed by chezmoi.** Source of truth: `~/.local/share/chezmoi/private_dot_agents/skills/`. After creating or editing a skill, run `chezmoi apply` to deploy. See `skill-conventions` for the full directory layout and symlink structure.
 
 You write test cases (pressure scenarios with subagents), watch them fail (baseline behavior), write the skill (documentation), watch tests pass (agents comply), and refactor (close loopholes).
 
