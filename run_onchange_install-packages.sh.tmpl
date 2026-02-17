@@ -11,8 +11,8 @@ fi
 
 brew bundle --file="{{ .chezmoi.sourceDir }}/Brewfile"
 
-# Claude Code skills
-if command -v claude &>/dev/null; then
-    echo "Installing Claude Code skills..."
-    claude plugin install hjewkes-skills 2>/dev/null || true
+# Agent skills
+if command -v npx &>/dev/null; then
+    echo "Installing agent skills..."
+    npx skills add hjewkes/agent-skills --skill='*' 2>/dev/null || true
 fi
