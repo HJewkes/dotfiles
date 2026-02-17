@@ -10,3 +10,9 @@ if ! command -v brew &>/dev/null; then
 fi
 
 brew bundle --file="{{ .chezmoi.sourceDir }}/Brewfile"
+
+# Claude Code skills
+if command -v claude &>/dev/null; then
+    echo "Installing Claude Code skills..."
+    claude plugin install hjewkes-skills 2>/dev/null || true
+fi
