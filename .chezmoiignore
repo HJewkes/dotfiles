@@ -14,7 +14,7 @@ Brewfile
 .claude/session-env
 .claude/shell-snapshots
 .claude/stats-cache.json
-.claude/statusline-command.sh
+.claude/status-cache
 .claude/tasks
 .claude/teams
 .claude/telemetry

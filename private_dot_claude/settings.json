@@ -63,6 +63,26 @@
             "command": "FILE=$(echo \"$TOOL_INPUT\" | jq -r '.file_path // empty'); case \"$FILE\" in *.env|*.env.*|*credentials*|*secret*|*.pem|*.key) echo \"BLOCKED: Cannot write sensitive file: $FILE\" >&2; exit 2;; */pnpm-lock.yaml|*/package-lock.json|*/yarn.lock|*/uv.lock) echo \"BLOCKED: Cannot write lock file: $FILE\" >&2; exit 2;; esac"
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/scripts/hook-pre-tool.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/scripts/hook-post-tool.sh"
+          }
+        ]
       }
     ],
     "Notification": [
@@ -76,6 +96,16 @@
         ]
       }
     ],
-    "Stop": []
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/scripts/hook-stop.sh"
+          }
+        ]
+      }
+    ]
   }
 }

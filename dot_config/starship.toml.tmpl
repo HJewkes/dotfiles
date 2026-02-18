@@ -1,0 +1,78 @@
+# Unified Status System — Terminal Prompt
+# Catppuccin Mocha + Hybrid Pills + Grouped Powerline
+# See ~/.claude/scripts/preview-styles.sh for approved visual design
+
+format = """
+$time \
+${custom.ctx_group}\
+$directory \
+${custom.git_group}\
+${custom.auth}\
+$status\
+$cmd_duration\
+$line_break\
+$character"""
+
+# Disable all built-in modules we don't use
+[git_branch]
+disabled = true
+
+[git_status]
+disabled = true
+
+[git_commit]
+disabled = true
+
+[git_state]
+disabled = true
+
+# Solo pill: Time
+[time]
+disabled = false
+time_format = "%H:%M"
+format = "[](fg:#45475a)[ $time ](bg:#45475a fg:#a6adc8)[](fg:#45475a)"
+
+# Solo pill: Directory
+[directory]
+truncation_length = 3
+truncate_to_repo = true
+format = "[](fg:#89b4fa)[ $path ](bg:#89b4fa fg:#11111b)[](fg:#89b4fa)"
+
+# Solo pill: Command duration
+[cmd_duration]
+min_time = 2000
+format = " [](fg:#f9e2af)[ $duration ](bg:#f9e2af fg:#11111b)[](fg:#f9e2af)"
+
+# Solo pill: Error status
+[status]
+disabled = false
+format = " [](fg:#f38ba8)[ $symbol$status ](bg:#f38ba8 fg:#11111b)[](fg:#f38ba8)"
+
+# Prompt character
+[character]
+success_symbol = "[❯](fg:#cba6f7)"
+error_symbol = "[❯](fg:#f38ba8)"
+
+# Custom: ctx-group (k8s + hostname + jobs)
+[custom.ctx_group]
+command = "{{ .chezmoi.homeDir }}/.claude/scripts/starship-ctx-group.sh"
+when = true
+format = "$output "
+use_stdin = false
+shell = ["bash", "--noprofile", "--norc"]
+
+# Custom: git-group (branch + worktree + dirty)
+[custom.git_group]
+command = "{{ .chezmoi.homeDir }}/.claude/scripts/starship-git-group.sh"
+detect_folders = [".git"]
+format = "$output "
+use_stdin = false
+shell = ["bash", "--noprofile", "--norc"]
+
+# Custom: auth countdown
+[custom.auth]
+command = "{{ .chezmoi.homeDir }}/.claude/scripts/starship-auth.sh"
+when = true
+format = "$output "
+use_stdin = false
+shell = ["bash", "--noprofile", "--norc"]
