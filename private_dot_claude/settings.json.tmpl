@@ -10,7 +10,11 @@
     "hookify@claude-plugins-official": true,
     "context7@claude-plugins-official": true
   },
+{{- if eq .machine "work" }}
+  "effortLevel": "high",
+{{- else }}
   "effortLevel": "medium",
+{{- end }}
   "skipDangerousModePermissionPrompt": true,
   "permissions": {
     "deny": [
@@ -91,7 +95,11 @@
         "hooks": [
           {
             "type": "command",
+{{- if eq .chezmoi.os "darwin" }}
             "command": "osascript -e 'display notification \"Claude Code needs your attention\" with title \"Claude Code\" sound name \"Funk\"'"
+{{- else }}
+            "command": "notify-send 'Claude Code' 'Claude Code needs your attention'"
+{{- end }}
           }
         ]
       }
