@@ -25,3 +25,6 @@ Brewfile
 .claude/*.json
 !.claude/settings.json
 
+# Cursor skills — installed by npx skills add, not chezmoi
+.cursor/skills
+

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/zsh
 # Claude Code TUI statusline — renders floating pills for the footer
 # Called by Claude Code on every statusline refresh, receives JSON via stdin
 # Renders: model pill, context bar pill, metrics pill, auth pill
