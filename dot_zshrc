@@ -7,5 +7,6 @@ source ~/.zsh/aliases.zsh
 
 eval "$(starship init zsh)"
 
+[[ -f ~/.zsh/ai.zsh ]] && source ~/.zsh/ai.zsh
 [[ -f ~/.secrets.zsh ]] && source ~/.secrets.zsh
 [[ -f ~/.localrc ]] && source ~/.localrc

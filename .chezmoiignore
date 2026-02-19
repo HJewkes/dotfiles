@@ -2,6 +2,9 @@ README.md
 LICENSE.md
 Brewfile
 
+# Work-only files
+{{ if ne .machine "work" }}dot_zsh/ai.zsh{{ end }}
+
 # Claude Code runtime directories — not managed by chezmoi
 .claude/cache
 .claude/debug
