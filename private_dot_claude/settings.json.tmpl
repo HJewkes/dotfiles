@@ -1,4 +1,7 @@
-{
+{{- $patchPath := joinPath .chezmoi.homeDir ".config/chezmoi/claude-settings-patch.json" -}}
+{{- $patch := dict -}}
+{{- if stat $patchPath -}}{{- $patch = include $patchPath | fromJson -}}{{- end -}}
+{{- $base := `{
   "statusLine": {
     "type": "command",
     "command": "bash ~/.claude/statusline-command.sh"
@@ -25,27 +28,8 @@
     ]
   },
   "env": {
-    {{- if eq .machine "work" }}
-    "ANTHROPIC_BASE_URL": "https://llm-gateway.robinhood.com/anthropic",
-    "CLAUDE_CODE_API_KEY_HELPER_TTL_MS": "3600000",
-    "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
-    "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "true",
-    "OTEL_METRICS_EXPORTER": "otlp",
-    "OTEL_LOGS_EXPORTER": "otlp",
-    "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
-    "OTEL_EXPORTER_OTLP_ENDPOINT": "https://fe-otel.apollo.rhinternal.net/observability",
-    "OTEL_METRIC_EXPORT_INTERVAL": "30000",
-    "OTEL_LOGS_EXPORT_INTERVAL": "5000",
-    "OTEL_METRICS_INCLUDE_SESSION_ID": "true",
-    "OTEL_METRICS_INCLUDE_VERSION": "true",
-    "OTEL_METRICS_INCLUDE_ACCOUNT_UUID": "true",
-    "OTEL_LOG_USER_PROMPTS": "0",
-    {{- end }}
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
-  {{- if eq .machine "work" }}
-  "apiKeyHelper": "{{ .chezmoi.homeDir }}/.claude/scripts/token.sh",
-  {{- end }}
   "hooks": {
     "PreToolUse": [
       {
@@ -128,4 +112,5 @@
       }
     ]
   }
-}
+}` | fromJson -}}
+{{ mergeOverwrite $base $patch | toPrettyJson }}
