@@ -12,5 +12,14 @@ zinit wait lucid for \
         zdharma-continuum/fast-syntax-highlighting \
     blockf \
         zsh-users/zsh-completions \
-    atload"!_zsh_autosuggest_start" \
+    atload"!_zsh_autosuggest_start; \
+        _tab_accept_or_complete() { \
+            if [[ -n \"\$POSTDISPLAY\" ]]; then \
+                zle autosuggest-accept; \
+            else \
+                zle expand-or-complete; \
+            fi; \
+        }; \
+        zle -N _tab_accept_or_complete; \
+        bindkey '^I' _tab_accept_or_complete" \
         zsh-users/zsh-autosuggestions
