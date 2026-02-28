@@ -36,9 +36,9 @@ ICON_RROUND=$(printf '\ue0b4')
 input=$(cat)
 
 # ── Parse all JSON fields in a single jq call ───────────────
-read -r model_id used_pct cache_read cache_create ctx_size cost_usd duration_ms lines_add lines_rm exceeds_200k <<< \
+read -r model_id used_pct cache_read cache_create ctx_size cost_usd duration_ms lines_add lines_rm exceeds_200k session_id <<< \
   $(echo "$input" | jq -r '[
-    .model.id // "unknown",
+    (if (.model.id // "" | length) > 0 then .model.id else "unknown" end),
     .context_window.used_percentage // 0,
     .context_window.current_usage.cache_read_input_tokens // 0,
     .context_window.current_usage.cache_creation_input_tokens // 0,
@@ -47,7 +47,8 @@ read -r model_id used_pct cache_read cache_create ctx_size cost_usd duration_ms 
     .cost.total_duration_ms // 0,
     .cost.total_lines_added // 0,
     .cost.total_lines_removed // 0,
-    .exceeds_200k_tokens // false
+    .exceeds_200k_tokens // false,
+    .session_id // "unknown"
   ] | @tsv' 2>/dev/null)
 
 # ── Fallbacks for empty/malformed input ─────────────────────
@@ -61,6 +62,7 @@ read -r model_id used_pct cache_read cache_create ctx_size cost_usd duration_ms 
 [[ -z "$lines_add" || "$lines_add" == "null" ]] && lines_add=0
 [[ -z "$lines_rm" || "$lines_rm" == "null" ]] && lines_rm=0
 [[ -z "$exceeds_200k" || "$exceeds_200k" == "null" ]] && exceeds_200k="false"
+[[ -z "$session_id" || "$session_id" == "null" ]] && session_id="unknown"
 
 # ── HOOK BRIDGE STATE ─────────────────────────────────────────
 # Read tool state from hook bridge (Task 04). Format: STATE|TOOL_NAME|TIMESTAMP
@@ -258,22 +260,64 @@ elif [[ "$auth_remaining" =~ ^[0-9]+$ ]] && ((auth_remaining <= 60)); then
 fi
 # If >60m or unknown, auth_pill stays empty (hidden)
 
-# ── RENDER PILLS ────────────────────────────────────────────
+# ── VISIBLE LENGTH HELPER ──────────────────────────────────────
+# Strip ANSI escape sequences to compute visible character width
+visible_len() {
+    local stripped
+    stripped=$(echo -n "$1" | sed $'s/\033\[[0-9;]*m//g')
+    echo ${#stripped}
+}
 
-# Pill 1: State/Model (conditional — yellow state pill when working, mauve model pill when idle)
+# ── TERMINAL WIDTH ────────────────────────────────────────────
+# stdin is piped and /dev/tty is unavailable, so walk the process tree
+# to find an ancestor with a real TTY and query its width
+term_width=""
+_pid=$$
+for _i in 1 2 3 4 5; do
+    _pid=$(ps -o ppid= -p $_pid 2>/dev/null | tr -d ' ')
+    [[ -z "$_pid" || "$_pid" == "0" || "$_pid" == "1" ]] && break
+    _tty=$(ps -o tty= -p $_pid 2>/dev/null | tr -d ' ')
+    if [[ -n "$_tty" && "$_tty" != "??" && -e "/dev/$_tty" ]]; then
+        term_width=$(stty size < "/dev/$_tty" 2>/dev/null | awk '{print $2}')
+        break
+    fi
+done
+[[ -z "$term_width" || "$term_width" == "0" ]] && term_width=120
+
+# ── BUILD LEFT PILLS ─────────────────────────────────────────
+
+left=""
+
+# Pill 1: State/Model
 if [[ "$tool_state" == "working" ]]; then
-    printf " ${FG_YELLOW}${ICON_LROUND}${BG_YELLOW}${FG_CRUST} ${ICON_ZAP} ${formatted_tool_name} ${RST}${FG_YELLOW}${ICON_RROUND}${RST}"
+    left+=" ${FG_YELLOW}${ICON_LROUND}${BG_YELLOW}${FG_CRUST} ${ICON_ZAP} ${formatted_tool_name} ${RST}${FG_YELLOW}${ICON_RROUND}${RST}"
 else
-    printf " ${FG_MAUVE}${ICON_LROUND}${BG_MAUVE}${FG_CRUST} ${ICON_ROBOT} ${model_name} ${RST}${FG_MAUVE}${ICON_RROUND}${RST}"
+    left+=" ${FG_MAUVE}${ICON_LROUND}${BG_MAUVE}${FG_CRUST} ${ICON_ROBOT} ${model_name} ${RST}${FG_MAUVE}${ICON_RROUND}${RST}"
 fi
 
-# Pill 2: Context bar (surface1 bg)
-printf " ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1} ${blue_part}${teal_part}${gray_part} ${pct_color}${pct_int}%% ${RST}${BG_SURFACE1}${compact_label}${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
+# Pill 2: Context bar
+left+=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1} ${blue_part}${teal_part}${gray_part} ${pct_color}${pct_int}%% ${RST}${BG_SURFACE1}${compact_label}${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
 
-# Pill 3: Metrics (surface1 bg)
-printf " ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_GREEN} ${cost_display} ${FG_OVERLAY}${session_time} ${FG_OVERLAY}${lines_display} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
+# Pill 3: Metrics
+left+=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_GREEN} ${cost_display} ${FG_OVERLAY}${session_time} ${FG_OVERLAY}${lines_display} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
 
 # Pill 4: Auth (conditional)
-printf "${auth_pill}"
+left+="${auth_pill}"
 
-printf "\n"
+# ── BUILD RIGHT PILL ──────────────────────────────────────────
+ICON_HASH=$(printf '\uf489')  # nf-oct-terminal
+right="${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${ICON_HASH} ${FG_SUBTEXT}${session_id} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
+
+# ── PAD AND RENDER ────────────────────────────────────────────
+left_len=$(visible_len "$left")
+right_len=$(visible_len "$right")
+RIGHT_MARGIN=4
+gap=$((term_width - left_len - right_len - RIGHT_MARGIN))
+
+if ((gap < 2)); then
+    # Not enough room — just append right pill after left
+    printf '%b %b\n' "$left" "$right"
+else
+    padding=$(printf '%*s' "$gap" '')
+    printf '%b%s%b\n' "$left" "$padding" "$right"
+fi
