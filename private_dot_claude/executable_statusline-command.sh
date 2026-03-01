@@ -1,7 +1,7 @@
 #!/bin/zsh
 # Claude Code TUI statusline — renders floating pills for the footer
 # Called by Claude Code on every statusline refresh, receives JSON via stdin
-# Renders: model pill, context bar pill, metrics pill, auth pill
+# Renders: git pill, context bar pill, rate limit pill, metrics pill, auth pill, session pill
 
 # ── ANSI colors (Catppuccin Mocha) ──────────────────────────
 RST="\033[0m"
@@ -31,19 +31,21 @@ ICON_ZAP=$(printf '\u26a1')
 ICON_LOCK=$(printf '\uf023')
 ICON_LROUND=$(printf '\ue0b6')
 ICON_RROUND=$(printf '\ue0b4')
+ICON_GIT=$(printf '\ue0a0')
+ICON_WARN=$(printf '\uf071')
+ICON_FOLDER=$(printf '\uf07b')
 
 # ── Read stdin ──────────────────────────────────────────────
 input=$(cat)
 
 # ── Parse all JSON fields in a single jq call ───────────────
-read -r model_id used_pct cache_read cache_create ctx_size cost_usd duration_ms lines_add lines_rm exceeds_200k session_id <<< \
+read -r model_id used_pct cache_read cache_create ctx_size duration_ms lines_add lines_rm exceeds_200k session_id <<< \
   $(echo "$input" | jq -r '[
     (if (.model.id // "" | length) > 0 then .model.id else "unknown" end),
     .context_window.used_percentage // 0,
     .context_window.current_usage.cache_read_input_tokens // 0,
     .context_window.current_usage.cache_creation_input_tokens // 0,
     .context_window.context_window_size // 200000,
-    .cost.total_cost_usd // 0,
     .cost.total_duration_ms // 0,
     .cost.total_lines_added // 0,
     .cost.total_lines_removed // 0,
@@ -57,61 +59,15 @@ read -r model_id used_pct cache_read cache_create ctx_size cost_usd duration_ms 
 [[ -z "$cache_read" || "$cache_read" == "null" ]] && cache_read=0
 [[ -z "$cache_create" || "$cache_create" == "null" ]] && cache_create=0
 [[ -z "$ctx_size" || "$ctx_size" == "null" || "$ctx_size" == "0" ]] && ctx_size=200000
-[[ -z "$cost_usd" || "$cost_usd" == "null" ]] && cost_usd=0
 [[ -z "$duration_ms" || "$duration_ms" == "null" ]] && duration_ms=0
 [[ -z "$lines_add" || "$lines_add" == "null" ]] && lines_add=0
 [[ -z "$lines_rm" || "$lines_rm" == "null" ]] && lines_rm=0
 [[ -z "$exceeds_200k" || "$exceeds_200k" == "null" ]] && exceeds_200k="false"
 [[ -z "$session_id" || "$session_id" == "null" ]] && session_id="unknown"
 
-# ── HOOK BRIDGE STATE ─────────────────────────────────────────
-# Read tool state from hook bridge (Task 04). Format: STATE|TOOL_NAME|TIMESTAMP
-STATE_FILE="$HOME/.claude/status-cache/tool_state"
-tool_state="idle"
-tool_name=""
-if [[ -f "$STATE_FILE" ]]; then
-    IFS='|' read -r tool_state tool_name tool_ts < "$STATE_FILE" 2>/dev/null
-    # Validate fields — treat malformed data as idle
-    if [[ -z "$tool_state" ]]; then
-        tool_state="idle"
-    fi
-    # Stale check: if working state is >30s old, treat as idle
-    if [[ "$tool_state" == "working" ]]; then
-        now=$(date +%s)
-        if [[ -z "$tool_ts" || ! "$tool_ts" =~ ^[0-9]+$ ]] || (( now - tool_ts > 30 )); then
-            tool_state="idle"
-        fi
-    fi
-fi
-
-# Format tool name for display
-format_tool_name() {
-    case "$1" in
-        Read)       echo "Reading" ;;
-        Edit)       echo "Editing" ;;
-        Bash)       echo "Running cmd" ;;
-        Grep)       echo "Searching" ;;
-        Write)      echo "Writing" ;;
-        Glob)       echo "Searching" ;;
-        *)
-            # Show raw name, truncate to 15 chars if needed
-            local name="$1"
-            if (( ${#name} > 15 )); then
-                name="${name:0:15}"
-            fi
-            echo "$name"
-            ;;
-    esac
-}
-
-formatted_tool_name=$(format_tool_name "$tool_name")
-
 # ── MODEL NAME PARSING ──────────────────────────────────────
-# Input: "us.anthropic.claude-opus-4-6" → "opus 4"
-# Strategy: split on '-', find opus/sonnet/haiku, take that + next segment
 parse_model_name() {
     local id="$1"
-    # Replace dots with dashes for uniform splitting, then process
     local normalized="${id//./-}"
     local IFS='-'
     local parts=($normalized)
@@ -130,7 +86,6 @@ parse_model_name() {
         esac
     done
 
-    # Fallback: last 2 segments
     if ((count >= 2)); then
         echo "${parts[$((count-2))]} ${parts[$((count-1))]}"
     elif ((count == 1)); then
@@ -142,8 +97,113 @@ parse_model_name() {
 
 model_name=$(parse_model_name "$model_id")
 
+# ── GIT STATE DETECTION ────────────────────────────────────
+detect_git_state() {
+    local git_dir
+    git_dir=$(git rev-parse --absolute-git-dir 2>/dev/null) || { echo "||||"; return; }
+
+    local repo branch worktree="" state="ok" state_detail=""
+
+    repo=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)")
+    branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+
+    local common_dir
+    common_dir=$(cd "$(git rev-parse --git-common-dir 2>/dev/null)" && pwd -P)
+    if [[ "$git_dir" != "$common_dir" ]]; then
+        worktree=$(basename "$(pwd)")
+    fi
+
+    # Tier A: filesystem checks (sub-millisecond)
+    if [[ -f "$git_dir/index.lock" ]]; then
+        state="LOCK"
+    elif [[ -d "$git_dir/rebase-merge" ]]; then
+        state="REBASE"
+        local cur total
+        cur=$(cat "$git_dir/rebase-merge/msgnum" 2>/dev/null)
+        total=$(cat "$git_dir/rebase-merge/end" 2>/dev/null)
+        [[ -n "$cur" && -n "$total" ]] && state_detail="${cur}/${total}"
+    elif [[ -d "$git_dir/rebase-apply" ]]; then
+        if [[ -f "$git_dir/rebase-apply/applying" ]]; then
+            state="AM"
+        else
+            state="REBASE"
+        fi
+    elif [[ -f "$git_dir/MERGE_HEAD" ]]; then
+        state="MERGE"
+    elif [[ -z "$branch" ]]; then
+        state="DETACHED"
+        branch=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+    elif [[ -f "$git_dir/CHERRY_PICK_HEAD" ]]; then
+        state="CHERRY-PICK"
+    elif [[ -f "$git_dir/BISECT_LOG" ]]; then
+        state="BISECT"
+    elif [[ -f "$git_dir/REVERT_HEAD" ]]; then
+        state="REVERT"
+    fi
+
+    # Tier B: git status for conflicts + upstream
+    local status_output
+    status_output=$(git status --porcelain=v2 --branch 2>/dev/null)
+
+    local conflict_count=0
+    conflict_count=$(grep -c "^u " <<< "$status_output" 2>/dev/null) || conflict_count=0
+    if (( conflict_count > 0 )) && [[ "$state" != "LOCK" ]]; then
+        state="CONFLICT"
+        state_detail="$conflict_count"
+    fi
+
+    if [[ "$state" == "ok" ]]; then
+        local ab_line upstream_line
+        ab_line=$(grep "^# branch.ab" <<< "$status_output")
+        upstream_line=$(grep "^# branch.upstream" <<< "$status_output")
+
+        if [[ -z "$upstream_line" && "$branch" != "main" && "$branch" != "master" ]]; then
+            state="NO-UPSTREAM"
+        elif [[ -n "$ab_line" ]]; then
+            local ahead behind
+            ahead=$(awk '{print $3}' <<< "$ab_line" | tr -d '+')
+            behind=$(awk '{print $4}' <<< "$ab_line" | tr -d '-')
+            if (( ahead > 0 && behind > 0 )); then
+                state="DIVERGED"
+                state_detail="+${ahead}/-${behind}"
+            fi
+        fi
+    fi
+
+    echo "${repo}|${branch}|${worktree}|${state}|${state_detail}"
+}
+
+# ── RATE LIMIT DATA ────────────────────────────────────────
+rate_data=$("$HOME/.claude/scripts/rate-limits.sh" 2>/dev/null)
+IFS='|' read -r rate_5hr rate_weekly rate_5hr_reset rate_weekly_reset <<< "$rate_data"
+[[ -z "$rate_5hr" ]] && rate_5hr="unknown"
+[[ -z "$rate_weekly" ]] && rate_weekly="unknown"
+
+pct_to_bar() {
+    local pct="$1"
+    if [[ "$pct" == "unknown" || -z "$pct" ]]; then printf '\u2500'; return; fi
+    if (( pct >= 95 )); then printf '\u2588'
+    elif (( pct >= 85 )); then printf '\u2587'
+    elif (( pct >= 75 )); then printf '\u2586'
+    elif (( pct >= 60 )); then printf '\u2585'
+    elif (( pct >= 45 )); then printf '\u2584'
+    elif (( pct >= 30 )); then printf '\u2583'
+    elif (( pct >= 15 )); then printf '\u2582'
+    else printf '\u2581'
+    fi
+}
+
+pct_to_color() {
+    local pct="$1"
+    if [[ "$pct" == "unknown" || -z "$pct" ]]; then echo "$FG_OVERLAY"; return; fi
+    if (( pct >= 90 )); then echo "${BOLD}${FG_RED}"
+    elif (( pct >= 80 )); then echo "$FG_PEACH"
+    elif (( pct >= 60 )); then echo "$FG_YELLOW"
+    else echo "$FG_GREEN"
+    fi
+}
+
 # ── CONTEXT BAR ─────────────────────────────────────────────
-# 20 chars wide. Blue=cached, Teal=new, Gray=free
 BAR_WIDTH=20
 total_used=$((cache_read + cache_create))
 
@@ -151,12 +211,10 @@ if ((total_used > 0)); then
     blue_blocks=$((cache_read * BAR_WIDTH / ctx_size))
     teal_blocks=$((cache_create * BAR_WIDTH / ctx_size))
 else
-    # Use used_pct as fallback when token breakdown is 0
     blue_blocks=$((used_pct * BAR_WIDTH / 100))
     teal_blocks=0
 fi
 
-# Ensure at least 1 block for each non-zero component
 if ((cache_read > 0 && blue_blocks == 0)); then
     blue_blocks=1
 fi
@@ -164,7 +222,6 @@ if ((cache_create > 0 && teal_blocks == 0)); then
     teal_blocks=1
 fi
 
-# Cap total used blocks at BAR_WIDTH
 if ((blue_blocks + teal_blocks > BAR_WIDTH)); then
     teal_blocks=$((BAR_WIDTH - blue_blocks))
     if ((teal_blocks < 0)); then
@@ -176,7 +233,6 @@ fi
 gray_blocks=$((BAR_WIDTH - blue_blocks - teal_blocks))
 if ((gray_blocks < 0)); then gray_blocks=0; fi
 
-# Build bar string — pre-compute block characters once, then repeat via printf
 BLOCK_FULL=$(printf '\u2588')
 BLOCK_LIGHT=$(printf '\u2591')
 
@@ -190,8 +246,7 @@ blue_part="${FG_BLUE}$(build_repeat "$BLOCK_FULL" "$blue_blocks")"
 teal_part="${FG_TEAL}$(build_repeat "$BLOCK_FULL" "$teal_blocks")"
 gray_part="${FG_OVERLAY}$(build_repeat "$BLOCK_LIGHT" "$gray_blocks")"
 
-# % color escalation
-pct_int=${used_pct%.*}  # truncate any decimal
+pct_int=${used_pct%.*}
 if ((pct_int > 85)); then
     pct_color="${BOLD}${FG_PEACH}"
 elif ((pct_int >= 70)); then
@@ -200,7 +255,6 @@ else
     pct_color="${FG_BLUE}"
 fi
 
-# Compaction label
 compact_label=""
 if [[ "$exceeds_200k" == "true" ]]; then
     compact_label="${FG_PEACH}compact "
@@ -236,10 +290,6 @@ else
     lines_display="${net_lines}"
 fi
 
-# ── COST FORMATTING ─────────────────────────────────────────
-# Format with 2 decimal places
-cost_display=$(printf '$%.2f' "$cost_usd" 2>/dev/null || echo '$0.00')
-
 # ── AUTH PILL ───────────────────────────────────────────────
 auth_pill=""
 auth_remaining=$("$HOME/.claude/scripts/auth-remaining.sh" 2>/dev/null)
@@ -248,20 +298,15 @@ if [[ "$auth_remaining" == "expired" ]]; then
     auth_pill=$(printf " ${FG_RED}${ICON_LROUND}${BG_RED}${FG_CRUST}${BOLD} ${ICON_LOCK} EXPIRED ${RST}${FG_RED}${ICON_RROUND}${RST}")
 elif [[ "$auth_remaining" =~ ^[0-9]+$ ]] && ((auth_remaining <= 60)); then
     if ((auth_remaining <= 10)); then
-        # Peach bold — urgent
         auth_pill=$(printf " ${FG_PEACH}${ICON_LROUND}${BG_PEACH}${FG_CRUST}${BOLD} ${ICON_LOCK} ${auth_remaining}m ${RST}${FG_PEACH}${ICON_RROUND}${RST}")
     elif ((auth_remaining <= 30)); then
-        # Yellow — attention
         auth_pill=$(printf " ${FG_YELLOW}${ICON_LROUND}${BG_YELLOW}${FG_CRUST} ${ICON_LOCK} ${auth_remaining}m ${RST}${FG_YELLOW}${ICON_RROUND}${RST}")
     else
-        # Subtext on surface1 — muted informational
         auth_pill=$(printf " ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_SUBTEXT} ${ICON_LOCK} ${auth_remaining}m ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}")
     fi
 fi
-# If >60m or unknown, auth_pill stays empty (hidden)
 
 # ── VISIBLE LENGTH HELPER ──────────────────────────────────────
-# Strip ANSI escape sequences to compute visible character width
 visible_len() {
     local stripped
     stripped=$(echo -n "$1" | sed $'s/\033\[[0-9;]*m//g')
@@ -269,8 +314,6 @@ visible_len() {
 }
 
 # ── TERMINAL WIDTH ────────────────────────────────────────────
-# stdin is piped and /dev/tty is unavailable, so walk the process tree
-# to find an ancestor with a real TTY and query its width
 term_width=""
 _pid=$$
 for _i in 1 2 3 4 5; do
@@ -283,34 +326,84 @@ for _i in 1 2 3 4 5; do
     fi
 done
 [[ -z "$term_width" || "$term_width" == "0" ]] && term_width=120
+[[ -n "$STATUSLINE_TEST_WIDTH" ]] && term_width="$STATUSLINE_TEST_WIDTH"
 
-# ── BUILD LEFT PILLS ─────────────────────────────────────────
+# ── BUILD PILLS ─────────────────────────────────────────────
 
-left=""
+# Pill 1: Git
+IFS='|' read -r git_repo git_branch git_worktree git_state git_state_detail <<< "$(detect_git_state)"
 
-# Pill 1: State/Model
-if [[ "$tool_state" == "working" ]]; then
-    left+=" ${FG_YELLOW}${ICON_LROUND}${BG_YELLOW}${FG_CRUST} ${ICON_ZAP} ${formatted_tool_name} ${RST}${FG_YELLOW}${ICON_RROUND}${RST}"
+if [[ -z "$git_repo" ]]; then
+    dir_name=$(basename "$(pwd)")
+    pill1=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_SUBTEXT} ${ICON_FOLDER} ${dir_name} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
 else
-    left+=" ${FG_MAUVE}${ICON_LROUND}${BG_MAUVE}${FG_CRUST} ${ICON_ROBOT} ${model_name} ${RST}${FG_MAUVE}${ICON_RROUND}${RST}"
+    git_label="${git_repo}:${git_branch}"
+    git_wt_suffix=""
+    [[ -n "$git_worktree" ]] && git_wt_suffix=" [wt:${git_worktree}]"
+
+    case "$git_state" in
+        LOCK)
+            pill1=" ${FG_RED}${ICON_LROUND}${BG_RED}${FG_CRUST}${BOLD} ${ICON_WARN} LOCK ${git_label} ${RST}${FG_RED}${ICON_RROUND}${RST}"
+            ;;
+        CONFLICT)
+            pill1=" ${FG_RED}${ICON_LROUND}${BG_RED}${FG_CRUST}${BOLD} ${ICON_WARN} CONFLICT ${git_label} ${RST}${FG_RED}${ICON_RROUND}${RST}"
+            ;;
+        REBASE)
+            rebase_info="REBASE"
+            [[ -n "$git_state_detail" ]] && rebase_info="REBASE ${git_state_detail}"
+            pill1=" ${FG_PEACH}${ICON_LROUND}${BG_PEACH}${FG_CRUST} ${ICON_GIT} ${git_label} ${rebase_info} ${RST}${FG_PEACH}${ICON_RROUND}${RST}"
+            ;;
+        MERGE)
+            pill1=" ${FG_YELLOW}${ICON_LROUND}${BG_YELLOW}${FG_CRUST} ${ICON_GIT} ${git_label} MERGE ${RST}${FG_YELLOW}${ICON_RROUND}${RST}"
+            ;;
+        DETACHED)
+            pill1=" ${FG_PEACH}${ICON_LROUND}${BG_PEACH}${FG_CRUST} ${ICON_GIT} ${git_repo}:${git_branch} DETACHED ${RST}${FG_PEACH}${ICON_RROUND}${RST}"
+            ;;
+        CHERRY-PICK|BISECT|REVERT|AM)
+            pill1=" ${FG_YELLOW}${ICON_LROUND}${BG_YELLOW}${FG_CRUST} ${ICON_GIT} ${git_label} ${git_state} ${RST}${FG_YELLOW}${ICON_RROUND}${RST}"
+            ;;
+        DIVERGED)
+            pill1=" ${FG_PEACH}${ICON_LROUND}${BG_PEACH}${FG_CRUST} ${ICON_GIT} ${git_label} DIVERGED ${RST}${FG_PEACH}${ICON_RROUND}${RST}"
+            ;;
+        NO-UPSTREAM)
+            pill1=" ${FG_YELLOW}${ICON_LROUND}${BG_YELLOW}${FG_CRUST} ${ICON_GIT} ${git_label} NO-UPSTREAM ${RST}${FG_YELLOW}${ICON_RROUND}${RST}"
+            ;;
+        *)
+            pill1=" ${FG_MAUVE}${ICON_LROUND}${BG_MAUVE}${FG_CRUST} ${ICON_GIT} ${git_label}${git_wt_suffix} ${RST}${FG_MAUVE}${ICON_RROUND}${RST}"
+            ;;
+    esac
 fi
 
 # Pill 2: Context bar
-left+=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1} ${blue_part}${teal_part}${gray_part} ${pct_color}${pct_int}%% ${RST}${BG_SURFACE1}${compact_label}${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
+pill2=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1} ${blue_part}${teal_part}${gray_part} ${pct_color}${pct_int}%% ${RST}${BG_SURFACE1}${compact_label}${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
 
-# Pill 3: Metrics
-left+=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_GREEN} ${cost_display} ${FG_OVERLAY}${session_time} ${FG_OVERLAY}${lines_display} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
+# Pill 3: Rate limit
+bar_5hr=$(pct_to_bar "$rate_5hr")
+bar_weekly=$(pct_to_bar "$rate_weekly")
+color_5hr=$(pct_to_color "$rate_5hr")
+color_weekly=$(pct_to_color "$rate_weekly")
 
-# Pill 4: Auth (conditional)
-left+="${auth_pill}"
+rate_pct_display=""
+if [[ "$rate_5hr" != "unknown" ]] && (( rate_5hr >= 80 )); then
+    rate_pct_display=" ${rate_5hr}%%"
+fi
+
+pill3=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_SUBTEXT} ${model_name} ${color_5hr}${bar_5hr}${color_weekly}${bar_weekly}${rate_pct_display} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
+
+# Pill 4: Session metrics
+lines_color="$FG_GREEN"
+(( net_lines < 0 )) && lines_color="$FG_RED"
+
+pill4=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${session_time} ${lines_color}${lines_display} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
 
 # Pill 5: Session ID
-ICON_HASH=$(printf '\uf489')  # nf-oct-terminal
-left+=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${ICON_HASH} ${FG_SUBTEXT}${session_id} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
+ICON_HASH=$(printf '\uf489')
+pill5=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${ICON_HASH} ${FG_SUBTEXT}${session_id} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
+
+# ── ASSEMBLE ─────────────────────────────────────────────────
+left="${pill1}${pill2}${pill3}${pill4}${auth_pill}${pill5}"
 
 # ── BUILD RIGHT PILL ──────────────────────────────────────────
-# Right-alignment infrastructure preserved for future use.
-# To activate: set `right` to a non-empty pill string here.
 right=""
 
 # ── PAD AND RENDER ────────────────────────────────────────────
@@ -320,7 +413,6 @@ RIGHT_MARGIN=4
 gap=$((term_width - left_len - right_len - RIGHT_MARGIN))
 
 if ((gap < 2)); then
-    # Not enough room — just append right pill after left
     printf '%b %b\n' "$left" "$right"
 else
     padding=$(printf '%*s' "$gap" '')
