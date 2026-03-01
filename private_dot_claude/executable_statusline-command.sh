@@ -69,14 +69,13 @@ read -r model_id used_pct cache_read cache_create ctx_size duration_ms lines_add
 parse_model_name() {
     local id="$1"
     local normalized="${id//./-}"
-    local IFS='-'
-    local parts=($normalized)
+    local parts=(${(s:-:)normalized})
     local count=${#parts[@]}
 
-    for ((i=0; i<count; i++)); do
+    for ((i=1; i<=count; i++)); do
         case "${parts[$i]}" in
             opus|sonnet|haiku)
-                if ((i + 1 < count)); then
+                if ((i + 1 <= count)); then
                     echo "${parts[$i]} ${parts[$((i+1))]}"
                 else
                     echo "${parts[$i]}"
@@ -85,14 +84,7 @@ parse_model_name() {
                 ;;
         esac
     done
-
-    if ((count >= 2)); then
-        echo "${parts[$((count-2))]} ${parts[$((count-1))]}"
-    elif ((count == 1)); then
-        echo "${parts[0]}"
-    else
-        echo "unknown"
-    fi
+    echo "unknown"
 }
 
 model_name=$(parse_model_name "$model_id")
@@ -378,10 +370,10 @@ else
     esac
 fi
 
-# Pill 2: Context bar
-pill2=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1} ${blue_part}${teal_part}${gray_part} ${pct_color}${pct_int}% ${RST}${BG_SURFACE1}${compact_label}${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
+# Pill 2: Context bar — blue caps
+pill2=" ${FG_BLUE}${ICON_LROUND}${BG_SURFACE1} ${blue_part}${teal_part}${gray_part} ${pct_color}${pct_int}% ${RST}${BG_SURFACE1}${compact_label}${RST}${FG_BLUE}${ICON_RROUND}${RST}"
 
-# Pill 3: Rate limit
+# Pill 3: Rate limit — teal caps
 bar_5hr=$(pct_to_bar "$rate_5hr")
 bar_weekly=$(pct_to_bar "$rate_weekly")
 color_5hr=$(pct_to_color "$rate_5hr")
@@ -392,17 +384,17 @@ if [[ "$rate_5hr" != "unknown" ]] && (( rate_5hr >= 80 )); then
     rate_pct_display=" ${rate_5hr}%"
 fi
 
-pill3=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_SUBTEXT} ${model_name} ${color_5hr}${bar_5hr}${color_weekly}${bar_weekly}${rate_pct_display} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
+pill3=" ${FG_TEAL}${ICON_LROUND}${BG_SURFACE1}${FG_SUBTEXT} ${model_name} ${color_5hr}${bar_5hr}${color_weekly}${bar_weekly}${rate_pct_display} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
 
-# Pill 4: Session metrics
+# Pill 4: Session metrics — muted caps
 lines_color="$FG_GREEN"
 (( net_lines < 0 )) && lines_color="$FG_RED"
 
-pill4=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${session_time} ${lines_color}${lines_display} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
+pill4=" ${FG_OVERLAY}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${session_time} ${lines_color}${lines_display} ${RST}${FG_OVERLAY}${ICON_RROUND}${RST}"
 
-# Pill 5: Session ID
+# Pill 5: Session ID — muted caps
 ICON_HASH=$(printf '\uf489')
-pill5=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${ICON_HASH} ${FG_SUBTEXT}${session_id} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
+pill5=" ${FG_OVERLAY}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${ICON_HASH} ${FG_SUBTEXT}${session_id} ${RST}${FG_OVERLAY}${ICON_RROUND}${RST}"
 
 # ── PILL VARIANTS FOR ADAPTIVE WIDTH ─────────────────────────
 
@@ -414,10 +406,10 @@ else
 fi
 
 # Rate pill without model label
-pill3_no_model=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1} ${color_5hr}${bar_5hr}${color_weekly}${bar_weekly}${rate_pct_display} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
+pill3_no_model=" ${FG_TEAL}${ICON_LROUND}${BG_SURFACE1} ${color_5hr}${bar_5hr}${color_weekly}${bar_weekly}${rate_pct_display} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
 
 # Metrics pill without net lines
-pill4_no_lines=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${session_time} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
+pill4_no_lines=" ${FG_OVERLAY}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${session_time} ${RST}${FG_OVERLAY}${ICON_RROUND}${RST}"
 
 # ── ADAPTIVE ASSEMBLY ────────────────────────────────────────
 RIGHT_MARGIN=4
