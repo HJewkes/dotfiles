@@ -204,7 +204,7 @@ pct_to_color() {
 }
 
 # ── CONTEXT BAR ─────────────────────────────────────────────
-BAR_WIDTH=20
+BAR_WIDTH=12
 total_used=$((cache_read + cache_create))
 
 if ((total_used > 0)); then
@@ -379,7 +379,7 @@ else
 fi
 
 # Pill 2: Context bar
-pill2=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1} ${blue_part}${teal_part}${gray_part} ${pct_color}${pct_int}%% ${RST}${BG_SURFACE1}${compact_label}${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
+pill2=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1} ${blue_part}${teal_part}${gray_part} ${pct_color}${pct_int}% ${RST}${BG_SURFACE1}${compact_label}${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
 
 # Pill 3: Rate limit
 bar_5hr=$(pct_to_bar "$rate_5hr")
@@ -389,7 +389,7 @@ color_weekly=$(pct_to_color "$rate_weekly")
 
 rate_pct_display=""
 if [[ "$rate_5hr" != "unknown" ]] && (( rate_5hr >= 80 )); then
-    rate_pct_display=" ${rate_5hr}%%"
+    rate_pct_display=" ${rate_5hr}%"
 fi
 
 pill3=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_SUBTEXT} ${model_name} ${color_5hr}${bar_5hr}${color_weekly}${bar_weekly}${rate_pct_display} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
