@@ -304,9 +304,14 @@ left+=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_GREEN} ${cost_display} ${
 # Pill 4: Auth (conditional)
 left+="${auth_pill}"
 
-# ── BUILD RIGHT PILL ──────────────────────────────────────────
+# Pill 5: Session ID
 ICON_HASH=$(printf '\uf489')  # nf-oct-terminal
-right="${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${ICON_HASH} ${FG_SUBTEXT}${session_id} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
+left+=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${ICON_HASH} ${FG_SUBTEXT}${session_id} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
+
+# ── BUILD RIGHT PILL ──────────────────────────────────────────
+# Right-alignment infrastructure preserved for future use.
+# To activate: set `right` to a non-empty pill string here.
+right=""
 
 # ── PAD AND RENDER ────────────────────────────────────────────
 left_len=$(visible_len "$left")
