@@ -116,7 +116,13 @@ detect_git_state() {
 
     local repo branch worktree="" state="ok" state_detail=""
 
-    repo=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)")
+    local remote_url
+    remote_url=$(git remote get-url origin 2>/dev/null)
+    if [[ -n "$remote_url" ]]; then
+        repo=$(basename "$remote_url" .git)
+    else
+        repo=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)")
+    fi
     branch=$(git symbolic-ref --short HEAD 2>/dev/null)
 
     local common_dir
