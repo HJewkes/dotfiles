@@ -20,6 +20,8 @@ FG_CRUST="\033[38;2;17;17;27m"
 FG_SURFACE0="\033[38;2;49;50;68m"
 FG_SURFACE1="\033[38;2;69;71;90m"
 FG_BLUE="\033[38;2;137;180;250m"
+FG_BLUE_DIM="\033[38;2;80;110;180m"
+FG_TEAL_DIM="\033[38;2;60;140;125m"
 FG_GREEN="\033[38;2;166;227;161m"
 FG_YELLOW="\033[38;2;249;226;175m"
 FG_PEACH="\033[38;2;250;179;135m"
@@ -238,17 +240,17 @@ build_repeat() {
     echo "$result"
 }
 
-blue_part="${FG_CRUST}$(build_repeat "$BLOCK_FULL" "$blue_blocks")"
-teal_part="${FG_TEAL}$(build_repeat "$BLOCK_FULL" "$teal_blocks")"
+blue_part="${FG_BLUE_DIM}$(build_repeat "$BLOCK_FULL" "$blue_blocks")"
+teal_part="${FG_TEAL_DIM}$(build_repeat "$BLOCK_FULL" "$teal_blocks")"
 gray_part="${FG_SURFACE1}$(build_repeat "$BLOCK_LIGHT" "$gray_blocks")"
 
 pct_int=${used_pct%.*}
 if ((pct_int > 85)); then
     pct_color="${BOLD}${FG_RED}"
 elif ((pct_int >= 70)); then
-    pct_color="${FG_CRUST}"
+    pct_color="${FG_BLUE_DIM}"
 else
-    pct_color="${FG_CRUST}"
+    pct_color="${FG_BLUE_DIM}"
 fi
 
 compact_label=""
@@ -388,7 +390,7 @@ if [[ "$rate_5hr" != "unknown" ]] && (( rate_5hr >= 80 )); then
     rate_pct_display=" ${rate_5hr}%"
 fi
 
-pill3=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL}${FG_CRUST} ${model_name} ${FG_CRUST}${bar_5hr}${bar_weekly}${rate_pct_display} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
+pill3=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL}${FG_TEAL_DIM} ${model_name} ${bar_5hr}${bar_weekly}${rate_pct_display} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
 
 # Pill 4: Session metrics
 lines_color="$FG_GREEN"
@@ -410,7 +412,7 @@ else
 fi
 
 # Rate pill without model label
-pill3_no_model=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL} ${FG_CRUST}${bar_5hr}${bar_weekly}${rate_pct_display} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
+pill3_no_model=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL} ${FG_TEAL_DIM}${bar_5hr}${bar_weekly}${rate_pct_display} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
 
 # Metrics pill without net lines
 pill4_no_lines=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${session_time} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
