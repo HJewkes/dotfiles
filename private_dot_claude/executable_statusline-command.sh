@@ -11,6 +11,7 @@ BG_SURFACE0="\033[48;2;49;50;68m"
 BG_SURFACE1="\033[48;2;69;71;90m"
 BG_BLUE="\033[48;2;137;180;250m"
 BG_TEAL="\033[48;2;148;226;213m"
+BG_FLAMINGO="\033[48;2;242;205;205m"
 BG_MAUVE="\033[48;2;203;166;247m"
 BG_YELLOW="\033[48;2;249;226;175m"
 BG_PEACH="\033[48;2;250;179;135m"
@@ -22,6 +23,8 @@ FG_SURFACE1="\033[38;2;69;71;90m"
 FG_BLUE="\033[38;2;137;180;250m"
 FG_BLUE_DIM="\033[38;2;80;110;180m"
 FG_TEAL_DIM="\033[38;2;60;140;125m"
+FG_FLAMINGO="\033[38;2;242;205;205m"
+FG_FLAMINGO_DIM="\033[38;2;150;110;110m"
 FG_GREEN="\033[38;2;166;227;161m"
 FG_YELLOW="\033[38;2;249;226;175m"
 FG_PEACH="\033[38;2;250;179;135m"
@@ -94,6 +97,17 @@ parse_model_name() {
 }
 
 model_name=$(parse_model_name "$model_id")
+
+model_icon_char() {
+    case "$1" in
+        opus*)   printf '\u266b' ;;   # ♫ double notes
+        sonnet*) printf '\u266a' ;;   # ♪ single note
+        haiku*)  printf '\u2669' ;;   # ♩ quarter note
+        *)       printf '\u266a' ;;
+    esac
+}
+
+model_icon=$(model_icon_char "$model_name")
 
 # ── GIT STATE DETECTION ────────────────────────────────────
 detect_git_state() {
@@ -280,13 +294,6 @@ format_time() {
 
 session_time=$(format_time "$duration_ms")
 
-# ── NET LINES ───────────────────────────────────────────────
-net_lines=$((lines_add - lines_rm))
-if ((net_lines >= 0)); then
-    lines_display="+${net_lines}"
-else
-    lines_display="${net_lines}"
-fi
 
 # ── AUTH PILL ───────────────────────────────────────────────
 auth_pill=""
@@ -390,17 +397,10 @@ if [[ "$rate_5hr" != "unknown" ]] && (( rate_5hr >= 80 )); then
     rate_pct_display=" ${rate_5hr}%"
 fi
 
-pill3=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL}${FG_TEAL_DIM} ${model_name} ${bar_5hr}${bar_weekly}${rate_pct_display} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
+pill3=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL}${FG_TEAL_DIM} ${model_icon} ${model_name} ${bar_5hr}${bar_weekly}${rate_pct_display} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
 
-# Pill 4: Session metrics
-lines_color="$FG_GREEN"
-(( net_lines < 0 )) && lines_color="$FG_RED"
-
-pill4=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${session_time} ${lines_color}${lines_display} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
-
-# Pill 5: Session ID
-ICON_HASH=$(printf '\uf489')
-pill5=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${ICON_HASH} ${FG_SUBTEXT}${session_id} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
+# Pill 4: Session — combines time + ID
+pill4=" ${FG_FLAMINGO}${ICON_LROUND}${BG_FLAMINGO}${FG_FLAMINGO_DIM} ${session_time} ${FG_CRUST}${session_id} ${RST}${FG_FLAMINGO}${ICON_RROUND}${RST}"
 
 # ── PILL VARIANTS FOR ADAPTIVE WIDTH ─────────────────────────
 
@@ -414,29 +414,29 @@ fi
 # Rate pill without model label
 pill3_no_model=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL} ${FG_TEAL_DIM}${bar_5hr}${bar_weekly}${rate_pct_display} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
 
-# Metrics pill without net lines
-pill4_no_lines=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${session_time} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
+# Session pill without time (ID only)
+pill4_no_time=" ${FG_FLAMINGO}${ICON_LROUND}${BG_FLAMINGO}${FG_CRUST} ${session_id} ${RST}${FG_FLAMINGO}${ICON_RROUND}${RST}"
 
 # ── ADAPTIVE ASSEMBLY ────────────────────────────────────────
 RIGHT_MARGIN=4
 
 # Try each tier from widest to narrowest
-left="${pill1}${pill2}${pill3}${pill4}${auth_pill}${pill5}"
+left="${pill1}${pill2}${pill3}${pill4}${auth_pill}"
 if (( $(visible_len "$left") > term_width - RIGHT_MARGIN )); then
     # Tier 2: drop worktree suffix
-    left="${pill1_no_wt}${pill2}${pill3}${pill4}${auth_pill}${pill5}"
+    left="${pill1_no_wt}${pill2}${pill3}${pill4}${auth_pill}"
 fi
 if (( $(visible_len "$left") > term_width - RIGHT_MARGIN )); then
-    # Tier 3: drop model label + net lines
-    left="${pill1_no_wt}${pill2}${pill3_no_model}${pill4_no_lines}${auth_pill}${pill5}"
+    # Tier 3: drop model label + session time
+    left="${pill1_no_wt}${pill2}${pill3_no_model}${pill4_no_time}${auth_pill}"
 fi
 if (( $(visible_len "$left") > term_width - RIGHT_MARGIN )); then
-    # Tier 4: drop metrics entirely
-    left="${pill1_no_wt}${pill2}${pill3_no_model}${auth_pill}${pill5}"
+    # Tier 4: drop session pill entirely
+    left="${pill1_no_wt}${pill2}${pill3_no_model}${auth_pill}"
 fi
 if (( $(visible_len "$left") > term_width - RIGHT_MARGIN )); then
-    # Tier 5: minimal — git + context + session ID
-    left="${pill1_no_wt}${pill2}${pill5}"
+    # Tier 5: minimal — git + context bar only
+    left="${pill1_no_wt}${pill2}"
 fi
 
 # ── BUILD RIGHT PILL ──────────────────────────────────────────
