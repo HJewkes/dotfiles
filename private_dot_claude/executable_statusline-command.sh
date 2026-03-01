@@ -7,6 +7,7 @@
 RST="\033[0m"
 BOLD="\033[1m"
 
+BG_SURFACE0="\033[48;2;49;50;68m"
 BG_SURFACE1="\033[48;2;69;71;90m"
 BG_MAUVE="\033[48;2;203;166;247m"
 BG_YELLOW="\033[48;2;249;226;175m"
@@ -14,6 +15,7 @@ BG_PEACH="\033[48;2;250;179;135m"
 BG_RED="\033[48;2;243;139;168m"
 
 FG_CRUST="\033[38;2;17;17;27m"
+FG_SURFACE0="\033[38;2;49;50;68m"
 FG_SURFACE1="\033[38;2;69;71;90m"
 FG_BLUE="\033[38;2;137;180;250m"
 FG_GREEN="\033[38;2;166;227;161m"
@@ -225,8 +227,8 @@ fi
 gray_blocks=$((BAR_WIDTH - blue_blocks - teal_blocks))
 if ((gray_blocks < 0)); then gray_blocks=0; fi
 
-BLOCK_FULL=$(printf '\u2588')
-BLOCK_LIGHT=$(printf '\u2591')
+BLOCK_FULL=$(printf '\u2585')
+BLOCK_LIGHT=$(printf '\u2581')
 
 build_repeat() {
     local char="$1" count="$2" result=""
@@ -370,8 +372,8 @@ else
     esac
 fi
 
-# Pill 2: Context bar — blue caps
-pill2=" ${FG_BLUE}${ICON_LROUND}${BG_SURFACE1} ${blue_part}${teal_part}${gray_part} ${pct_color}${pct_int}% ${RST}${BG_SURFACE1}${compact_label}${RST}${FG_BLUE}${ICON_RROUND}${RST}"
+# Pill 2: Context bar — darker bg for inset bar effect
+pill2=" ${FG_SURFACE0}${ICON_LROUND}${BG_SURFACE0} ${blue_part}${teal_part}${gray_part} ${pct_color}${pct_int}% ${RST}${BG_SURFACE0}${compact_label}${RST}${FG_SURFACE0}${ICON_RROUND}${RST}"
 
 # Pill 3: Rate limit — teal caps
 bar_5hr=$(pct_to_bar "$rate_5hr")
@@ -384,17 +386,17 @@ if [[ "$rate_5hr" != "unknown" ]] && (( rate_5hr >= 80 )); then
     rate_pct_display=" ${rate_5hr}%"
 fi
 
-pill3=" ${FG_TEAL}${ICON_LROUND}${BG_SURFACE1}${FG_SUBTEXT} ${model_name} ${color_5hr}${bar_5hr}${color_weekly}${bar_weekly}${rate_pct_display} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
+pill3=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_TEAL} ${model_name} ${color_5hr}${bar_5hr}${color_weekly}${bar_weekly}${rate_pct_display} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
 
-# Pill 4: Session metrics — muted caps
+# Pill 4: Session metrics
 lines_color="$FG_GREEN"
 (( net_lines < 0 )) && lines_color="$FG_RED"
 
-pill4=" ${FG_OVERLAY}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${session_time} ${lines_color}${lines_display} ${RST}${FG_OVERLAY}${ICON_RROUND}${RST}"
+pill4=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${session_time} ${lines_color}${lines_display} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
 
-# Pill 5: Session ID — muted caps
+# Pill 5: Session ID
 ICON_HASH=$(printf '\uf489')
-pill5=" ${FG_OVERLAY}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${ICON_HASH} ${FG_SUBTEXT}${session_id} ${RST}${FG_OVERLAY}${ICON_RROUND}${RST}"
+pill5=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${ICON_HASH} ${FG_SUBTEXT}${session_id} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
 
 # ── PILL VARIANTS FOR ADAPTIVE WIDTH ─────────────────────────
 
@@ -406,10 +408,10 @@ else
 fi
 
 # Rate pill without model label
-pill3_no_model=" ${FG_TEAL}${ICON_LROUND}${BG_SURFACE1} ${color_5hr}${bar_5hr}${color_weekly}${bar_weekly}${rate_pct_display} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
+pill3_no_model=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1} ${color_5hr}${bar_5hr}${color_weekly}${bar_weekly}${rate_pct_display} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
 
 # Metrics pill without net lines
-pill4_no_lines=" ${FG_OVERLAY}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${session_time} ${RST}${FG_OVERLAY}${ICON_RROUND}${RST}"
+pill4_no_lines=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${session_time} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
 
 # ── ADAPTIVE ASSEMBLY ────────────────────────────────────────
 RIGHT_MARGIN=4
