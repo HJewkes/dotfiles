@@ -9,6 +9,8 @@ BOLD="\033[1m"
 
 BG_SURFACE0="\033[48;2;49;50;68m"
 BG_SURFACE1="\033[48;2;69;71;90m"
+BG_BLUE="\033[48;2;137;180;250m"
+BG_TEAL="\033[48;2;148;226;213m"
 BG_MAUVE="\033[48;2;203;166;247m"
 BG_YELLOW="\033[48;2;249;226;175m"
 BG_PEACH="\033[48;2;250;179;135m"
@@ -236,22 +238,22 @@ build_repeat() {
     echo "$result"
 }
 
-blue_part="${FG_BLUE}$(build_repeat "$BLOCK_FULL" "$blue_blocks")"
+blue_part="${FG_CRUST}$(build_repeat "$BLOCK_FULL" "$blue_blocks")"
 teal_part="${FG_TEAL}$(build_repeat "$BLOCK_FULL" "$teal_blocks")"
-gray_part="${FG_OVERLAY}$(build_repeat "$BLOCK_LIGHT" "$gray_blocks")"
+gray_part="${FG_SURFACE1}$(build_repeat "$BLOCK_LIGHT" "$gray_blocks")"
 
 pct_int=${used_pct%.*}
 if ((pct_int > 85)); then
-    pct_color="${BOLD}${FG_PEACH}"
+    pct_color="${BOLD}${FG_RED}"
 elif ((pct_int >= 70)); then
-    pct_color="${FG_YELLOW}"
+    pct_color="${FG_CRUST}"
 else
-    pct_color="${FG_BLUE}"
+    pct_color="${FG_CRUST}"
 fi
 
 compact_label=""
 if [[ "$exceeds_200k" == "true" ]]; then
-    compact_label="${FG_PEACH}compact "
+    compact_label="${FG_RED}compact "
 fi
 
 # ── TIME FORMATTING ─────────────────────────────────────────
@@ -372,8 +374,8 @@ else
     esac
 fi
 
-# Pill 2: Context bar — darker bg for inset bar effect
-pill2=" ${FG_SURFACE0}${ICON_LROUND}${BG_SURFACE0} ${blue_part}${teal_part}${gray_part} ${pct_color}${pct_int}% ${RST}${BG_SURFACE0}${compact_label}${RST}${FG_SURFACE0}${ICON_RROUND}${RST}"
+# Pill 2: Context bar — blue bg with dark inset bars
+pill2=" ${FG_BLUE}${ICON_LROUND}${BG_BLUE} ${blue_part}${teal_part}${gray_part} ${pct_color}${pct_int}% ${RST}${BG_BLUE}${compact_label}${RST}${FG_BLUE}${ICON_RROUND}${RST}"
 
 # Pill 3: Rate limit — teal caps
 bar_5hr=$(pct_to_bar "$rate_5hr")
@@ -386,7 +388,7 @@ if [[ "$rate_5hr" != "unknown" ]] && (( rate_5hr >= 80 )); then
     rate_pct_display=" ${rate_5hr}%"
 fi
 
-pill3=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_TEAL} ${model_name} ${color_5hr}${bar_5hr}${color_weekly}${bar_weekly}${rate_pct_display} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
+pill3=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL}${FG_CRUST} ${model_name} ${FG_CRUST}${bar_5hr}${bar_weekly}${rate_pct_display} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
 
 # Pill 4: Session metrics
 lines_color="$FG_GREEN"
@@ -408,7 +410,7 @@ else
 fi
 
 # Rate pill without model label
-pill3_no_model=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1} ${color_5hr}${bar_5hr}${color_weekly}${bar_weekly}${rate_pct_display} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
+pill3_no_model=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL} ${FG_CRUST}${bar_5hr}${bar_weekly}${rate_pct_display} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
 
 # Metrics pill without net lines
 pill4_no_lines=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${session_time} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
