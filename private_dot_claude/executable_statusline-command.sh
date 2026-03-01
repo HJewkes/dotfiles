@@ -339,7 +339,11 @@ if [[ -z "$git_repo" ]]; then
 else
     git_label="${git_repo}:${git_branch}"
     git_wt_suffix=""
-    [[ -n "$git_worktree" ]] && git_wt_suffix=" [wt:${git_worktree}]"
+    git_wt_suffix_text=""
+    if [[ -n "$git_worktree" ]]; then
+        git_wt_suffix=" [wt:${git_worktree}]"
+        git_wt_suffix_text=" [wt:${git_worktree}]"
+    fi
 
     case "$git_state" in
         LOCK)
@@ -400,16 +404,50 @@ pill4=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${session_time} 
 ICON_HASH=$(printf '\uf489')
 pill5=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${ICON_HASH} ${FG_SUBTEXT}${session_id} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
 
-# ── ASSEMBLE ─────────────────────────────────────────────────
+# ── PILL VARIANTS FOR ADAPTIVE WIDTH ─────────────────────────
+
+# Git pill without worktree suffix
+if [[ -n "$git_repo" && "$git_state" == "ok" ]]; then
+    pill1_no_wt=" ${FG_MAUVE}${ICON_LROUND}${BG_MAUVE}${FG_CRUST} ${ICON_GIT} ${git_label} ${RST}${FG_MAUVE}${ICON_RROUND}${RST}"
+else
+    pill1_no_wt="$pill1"
+fi
+
+# Rate pill without model label
+pill3_no_model=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1} ${color_5hr}${bar_5hr}${color_weekly}${bar_weekly}${rate_pct_display} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
+
+# Metrics pill without net lines
+pill4_no_lines=" ${FG_SURFACE1}${ICON_LROUND}${BG_SURFACE1}${FG_OVERLAY} ${session_time} ${RST}${FG_SURFACE1}${ICON_RROUND}${RST}"
+
+# ── ADAPTIVE ASSEMBLY ────────────────────────────────────────
+RIGHT_MARGIN=4
+
+# Try each tier from widest to narrowest
 left="${pill1}${pill2}${pill3}${pill4}${auth_pill}${pill5}"
+if (( $(visible_len "$left") > term_width - RIGHT_MARGIN )); then
+    # Tier 2: drop worktree suffix
+    left="${pill1_no_wt}${pill2}${pill3}${pill4}${auth_pill}${pill5}"
+fi
+if (( $(visible_len "$left") > term_width - RIGHT_MARGIN )); then
+    # Tier 3: drop model label + net lines
+    left="${pill1_no_wt}${pill2}${pill3_no_model}${pill4_no_lines}${auth_pill}${pill5}"
+fi
+if (( $(visible_len "$left") > term_width - RIGHT_MARGIN )); then
+    # Tier 4: drop metrics entirely
+    left="${pill1_no_wt}${pill2}${pill3_no_model}${auth_pill}${pill5}"
+fi
+if (( $(visible_len "$left") > term_width - RIGHT_MARGIN )); then
+    # Tier 5: minimal — git + context + session ID
+    left="${pill1_no_wt}${pill2}${pill5}"
+fi
 
 # ── BUILD RIGHT PILL ──────────────────────────────────────────
+# Right-alignment infrastructure preserved for future use.
 right=""
 
 # ── PAD AND RENDER ────────────────────────────────────────────
 left_len=$(visible_len "$left")
 right_len=$(visible_len "$right")
-RIGHT_MARGIN=4
 gap=$((term_width - left_len - right_len - RIGHT_MARGIN))
 
 if ((gap < 2)); then
