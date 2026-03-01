@@ -29,8 +29,8 @@ iso_to_epoch() {
 
 fetch_usage() {
     local cred_json token response
-    cred_json=$(security find-generic-password -s "claude-cli" -w 2>/dev/null) || return 1
-    token=$(echo "$cred_json" | jq -r '.accessToken // .claudeAiOauth.accessToken // empty' 2>/dev/null)
+    cred_json=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null) || return 1
+    token=$(echo "$cred_json" | jq -r '.claudeAiOauth.accessToken // .accessToken // empty' 2>/dev/null)
     if [[ -z "$token" ]]; then
         return 1
     fi
