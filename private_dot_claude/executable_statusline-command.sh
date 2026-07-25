@@ -75,31 +75,61 @@ read -r model_id used_pct cache_read cache_create ctx_size duration_ms lines_add
 [[ -z "$session_id" || "$session_id" == "null" ]] && session_id="unknown"
 
 # ── MODEL NAME PARSING ──────────────────────────────────────
+# Version segments are 1-2 digits; longer runs are date stamps (20250929)
+is_version_seg() {
+    [[ "$1" == <-> && ${#1} -le 2 ]]
+}
+
 parse_model_name() {
     local id="$1"
+
+    # Drop trailing qualifiers such as claude-opus-5[1m] — the context pill
+    # reports window size from context_window_size instead
+    id="${id%%\[*}"
+
     local normalized="${id//./-}"
     local parts=(${(s:-:)normalized})
     local count=${#parts[@]}
 
+    local i fam_idx=0
     for ((i=1; i<=count; i++)); do
         case "${parts[$i]}" in
-            opus|sonnet|haiku)
-                if ((i + 1 <= count)); then
-                    echo "${parts[$i]} ${parts[$((i+1))]}"
-                else
-                    echo "${parts[$i]}"
-                fi
-                return
-                ;;
+            opus|sonnet|haiku|fable) fam_idx=$i; break ;;
         esac
     done
-    echo "unknown"
+    ((fam_idx == 0)) && { echo "unknown"; return }
+
+    local family="${parts[$fam_idx]}"
+    local segs=()
+
+    # Modern ids put the version after the family: claude-haiku-4-5-20251001
+    local j=$((fam_idx + 1))
+    while ((j <= count)) && is_version_seg "${parts[$j]}"; do
+        segs+=("${parts[$j]}")
+        ((j++))
+    done
+
+    # Legacy ids put it before: claude-3-5-sonnet-20241022
+    if ((${#segs[@]} == 0)); then
+        local k=$((fam_idx - 1))
+        while ((k >= 1)) && is_version_seg "${parts[$k]}"; do
+            segs=("${parts[$k]}" "${segs[@]}")
+            ((k--))
+        done
+    fi
+
+    if ((${#segs[@]} > 0)); then
+        echo "${family} ${(j:.:)segs}"
+    else
+        echo "${family}"
+    fi
 }
 
 model_name=$(parse_model_name "$model_id")
 
 model_icon_char() {
     case "$1" in
+        fable*)  printf '♬' ;;   # ♬ beamed notes
         opus*)   printf '\u266b' ;;   # ♫ double notes
         sonnet*) printf '\u266a' ;;   # ♪ single note
         haiku*)  printf '\u2669' ;;   # ♩ quarter note
@@ -222,6 +252,21 @@ pct_to_color() {
 }
 
 # ── CONTEXT BAR ─────────────────────────────────────────────
+format_ctx_size() {
+    local size="$1"
+    if ((size >= 1000000)); then
+        local whole=$((size / 1000000))
+        local tenths=$(( (size % 1000000) / 100000 ))
+        if ((tenths > 0)); then echo "${whole}.${tenths}m"; else echo "${whole}m"; fi
+    elif ((size >= 1000)); then
+        echo "$((size / 1000))k"
+    else
+        echo "${size}"
+    fi
+}
+
+ctx_label=$(format_ctx_size "$ctx_size")
+
 BAR_WIDTH=12
 total_used=$((cache_read + cache_create))
 
@@ -390,7 +435,7 @@ else
 fi
 
 # Pill 2: Context bar — blue bg with dark inset bars
-pill2=" ${FG_BLUE}${ICON_LROUND}${BG_BLUE} ${blue_part}${teal_part}${gray_part} ${pct_color}${pct_int}% ${RST}${BG_BLUE}${compact_label}${RST}${FG_BLUE}${ICON_RROUND}${RST}"
+pill2=" ${FG_BLUE}${ICON_LROUND}${BG_BLUE} ${blue_part}${teal_part}${gray_part} ${pct_color}${pct_int}% ${FG_SURFACE1}${ctx_label} ${RST}${BG_BLUE}${compact_label}${RST}${FG_BLUE}${ICON_RROUND}${RST}"
 
 # Pill 3: Rate limit — teal caps
 bar_5hr=$(pct_to_bar "$rate_5hr")
@@ -459,4 +504,114 @@ if ((gap < 2)); then
 else
     padding=$(printf '%*s' "$gap" '')
     printf '%b%s%b\n' "$left" "$padding" "$right"
+fi
+
+# ── BRAIN ORCHESTRATION LINE (line 2) ─────────────────────────
+# Reads from cache file written by brain hook handlers (<1ms)
+BRAIN_CACHE="$HOME/.claude/status-cache/brain-state.json"
+BG_LAVENDER="\033[48;2;180;190;254m"
+FG_LAVENDER="\033[38;2;180;190;254m"
+FG_LAVENDER_DIM="\033[38;2;100;110;170m"
+BG_SAPPHIRE="\033[48;2;116;199;236m"
+FG_SAPPHIRE="\033[38;2;116;199;236m"
+FG_SAPPHIRE_DIM="\033[38;2;60;120;150m"
+BG_GREEN="\033[48;2;166;227;161m"
+FG_GREEN_BG="\033[38;2;166;227;161m"
+FG_GREEN_DIM="\033[38;2;70;130;65m"
+ICON_BRAIN=$(printf '\uf5dc')
+ICON_AGENT=$(printf '\uf544')
+ICON_CHECK=$(printf '\uf00c')
+ICON_QUEUE=$(printf '\uf03a')
+
+if [[ -f "$BRAIN_CACHE" ]]; then
+    read -r b_agents b_active b_friction b_ready b_inprog b_done b_total b_project b_prs <<< \
+      $(jq -r '[
+        .agent_count // 0,
+        .active_agents // 0,
+        .friction_count // 0,
+        .tasks_ready // 0,
+        .tasks_in_progress // 0,
+        .tasks_done // 0,
+        .tasks_total // 0,
+        .project // "",
+        (.prs_created | length) // 0
+      ] | @tsv' "$BRAIN_CACHE" 2>/dev/null)
+
+    [[ -z "$b_agents" ]] && b_agents=0
+    [[ -z "$b_active" ]] && b_active=0
+    [[ -z "$b_friction" ]] && b_friction=0
+    [[ -z "$b_ready" ]] && b_ready=0
+    [[ -z "$b_inprog" ]] && b_inprog=0
+    [[ -z "$b_done" ]] && b_done=0
+    [[ -z "$b_total" ]] && b_total=0
+    [[ -z "$b_prs" ]] && b_prs=0
+
+    # Only show line 2 if there's meaningful data
+    if (( b_agents > 0 || b_total > 0 )); then
+        line2_parts=""
+
+        # Pill: Agents
+        if (( b_agents > 0 )); then
+            if (( b_active > 0 )); then
+                agent_color_fg="$FG_SAPPHIRE"
+                agent_color_bg="$BG_SAPPHIRE"
+            else
+                agent_color_fg="$FG_SURFACE1"
+                agent_color_bg="$BG_SURFACE1"
+            fi
+            line2_parts+=" ${agent_color_fg}${ICON_LROUND}${agent_color_bg}${FG_CRUST} ${ICON_AGENT} ${b_active}/${b_agents} agents ${RST}${agent_color_fg}${ICON_RROUND}${RST}"
+        fi
+
+        # Pill: Task burndown
+        if (( b_total > 0 )); then
+            BURN_WIDTH=8
+            filled=$((b_done * BURN_WIDTH / b_total))
+            empty=$((BURN_WIDTH - filled))
+            burn_bar="${FG_GREEN_DIM}$(build_repeat "$BLOCK_FULL" "$filled")${FG_SURFACE1}$(build_repeat "$BLOCK_LIGHT" "$empty")"
+
+            project_label=""
+            [[ -n "$b_project" ]] && project_label="${b_project} "
+
+            line2_parts+=" ${FG_GREEN_BG}${ICON_LROUND}${BG_GREEN}${FG_GREEN_DIM} ${ICON_CHECK} ${project_label}${burn_bar} ${b_done}/${b_total} ${RST}${FG_GREEN_BG}${ICON_RROUND}${RST}"
+        fi
+
+        # Pill: Queue (ready + in-progress)
+        if (( b_ready > 0 || b_inprog > 0 )); then
+            line2_parts+=" ${FG_LAVENDER}${ICON_LROUND}${BG_LAVENDER}${FG_LAVENDER_DIM} ${ICON_QUEUE} ${b_ready} ready ${b_inprog} wip ${RST}${FG_LAVENDER}${ICON_RROUND}${RST}"
+        fi
+
+        # Pill: Friction (only when non-zero)
+        if (( b_friction > 0 )); then
+            if (( b_friction >= 10 )); then
+                fric_fg="$FG_RED"; fric_bg="$BG_RED"
+            elif (( b_friction >= 5 )); then
+                fric_fg="$FG_PEACH"; fric_bg="$BG_PEACH"
+            else
+                fric_fg="$FG_YELLOW"; fric_bg="$BG_YELLOW"
+            fi
+            line2_parts+=" ${fric_fg}${ICON_LROUND}${fric_bg}${FG_CRUST} ${ICON_WARN} ${b_friction} friction ${RST}${fric_fg}${ICON_RROUND}${RST}"
+        fi
+
+        # Pill: PRs (only when non-zero)
+        if (( b_prs > 0 )); then
+            line2_parts+=" ${FG_MAUVE}${ICON_LROUND}${BG_MAUVE}${FG_CRUST} PR ${b_prs} ${RST}${FG_MAUVE}${ICON_RROUND}${RST}"
+        fi
+
+        # Adaptive width for line 2
+        line2_len=$(visible_len "$line2_parts")
+        if (( line2_len > term_width - RIGHT_MARGIN )); then
+            line2_parts=""
+            if (( b_agents > 0 )); then
+                line2_parts+=" ${agent_color_fg}${ICON_LROUND}${agent_color_bg}${FG_CRUST} ${ICON_AGENT} ${b_active}/${b_agents} ${RST}${agent_color_fg}${ICON_RROUND}${RST}"
+            fi
+            if (( b_total > 0 )); then
+                line2_parts+=" ${FG_GREEN_BG}${ICON_LROUND}${BG_GREEN}${FG_GREEN_DIM} ${b_done}/${b_total} ${RST}${FG_GREEN_BG}${ICON_RROUND}${RST}"
+            fi
+            if (( b_friction > 0 )); then
+                line2_parts+=" ${fric_fg}${ICON_LROUND}${fric_bg}${FG_CRUST} ${b_friction}f ${RST}${fric_fg}${ICON_RROUND}${RST}"
+            fi
+        fi
+
+        printf '%b\n' "$line2_parts"
+    fi
 fi
