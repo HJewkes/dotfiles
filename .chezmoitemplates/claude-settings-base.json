@@ -49,7 +49,12 @@
       "EnterPlanMode",
       "ExitPlanMode",
       "Artifact",
-      "Workflow"
+      "Workflow",
+      "ReportFindings",
+      "EnterWorktree",
+      "ExitWorktree",
+      "DesignSync",
+      "EndConversation"
     ]
   },
   "sandbox": {
