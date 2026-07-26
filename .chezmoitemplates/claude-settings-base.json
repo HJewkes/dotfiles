@@ -44,7 +44,13 @@
       "mcp__brain-vnm__*",
       "mcp__claude-in-chrome__*"
     ],
-    "defaultMode": "default"
+    "defaultMode": "default",
+    "deny": [
+      "EnterPlanMode",
+      "ExitPlanMode",
+      "Artifact",
+      "Workflow"
+    ]
   },
   "sandbox": {
     "allowAppleEvents": true,
