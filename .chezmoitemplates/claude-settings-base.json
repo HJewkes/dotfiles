@@ -40,7 +40,6 @@
       "WebFetch",
       "WebSearch",
       "mcp__active-work__*",
-      "mcp__brain-vnm__*",
       "mcp__claude-in-chrome__*"
     ],
     "defaultMode": "default",
