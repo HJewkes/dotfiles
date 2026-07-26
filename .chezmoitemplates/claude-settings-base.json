@@ -66,6 +66,23 @@
     ],
     "enableWeakerNetworkIsolation": true
   },
+  "skillOverrides": {
+    "agent-browser": "off",
+    "artifact-capabilities": "off",
+    "artifact-design": "off",
+    "code-review": "off",
+    "context-audit": "off",
+    "finishing-a-development-branch": "off",
+    "managing-github-issues": "off",
+    "playmylife": "off",
+    "review": "off",
+    "sanity-check": "off",
+    "sdk-verify": "off",
+    "security-review": "off",
+    "self-improve": "off",
+    "simplify": "off",
+    "using-git-worktrees": "off"
+  },
   "skipAutoPermissionPrompt": true,
   "skipDangerousModePermissionPrompt": true,
   "skipWorkflowUsageWarning": true,
