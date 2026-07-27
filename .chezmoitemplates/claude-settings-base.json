@@ -1,0 +1,99 @@
+{
+  "agentPushNotifEnabled": true,
+  "autoMode": {
+    "allow": [
+      "$defaults",
+      "Merging a pull request with `gh pr merge` (any of --squash/--merge/--rebase, optionally with --delete-branch) is standing pre-authorized by the user. GitHub branch protection enforces a required, strict status check, so a non-admin merge only succeeds when CI is green — the green gate is structural, not the classifier's job.",
+      "This standing authorization does NOT cover `gh pr merge --admin` (which bypasses branch protection and the green gate). Continue to require explicit, per-use user authorization before any admin-override merge."
+    ]
+  },
+  "effortLevel": "medium",
+  "enabledPlugins": {
+    "claude-code-setup@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true,
+    "playwright@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true
+  },
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "hooks": {
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "command": "osascript -e 'display notification \"Claude Code needs your attention\" with title \"Claude Code\" sound name \"Funk\"'",
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
+    ]
+  },
+  "model": "opus[1m]",
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Edit",
+      "Write",
+      "Read",
+      "WebFetch",
+      "WebSearch",
+      "mcp__active-work__*",
+      "mcp__claude-in-chrome__*",
+      "mcp__plugin_voltras-channel_voltras__*"
+    ],
+    "defaultMode": "default",
+    "deny": [
+      "EnterPlanMode",
+      "ExitPlanMode",
+      "Artifact",
+      "Workflow",
+      "ReportFindings",
+      "EnterWorktree",
+      "ExitWorktree",
+      "DesignSync",
+      "EndConversation"
+    ]
+  },
+  "sandbox": {
+    "allowAppleEvents": true,
+    "allowedDomains": [
+      "192.168.1.240",
+      "192.168.1.1",
+      "homeassistant.local"
+    ],
+    "enableWeakerNetworkIsolation": true
+  },
+  "skillOverrides": {
+    "agent-browser": "off",
+    "artifact-capabilities": "off",
+    "artifact-design": "off",
+    "code-review": "off",
+    "context-audit": "off",
+    "finishing-a-development-branch": "off",
+    "managing-github-issues": "off",
+    "playmylife": "off",
+    "review": "off",
+    "sanity-check": "off",
+    "sdk-verify": "off",
+    "security-review": "off",
+    "self-improve": "off",
+    "simplify": "off",
+    "using-git-worktrees": "off"
+  },
+  "skipAutoPermissionPrompt": true,
+  "skipDangerousModePermissionPrompt": true,
+  "skipWorkflowUsageWarning": true,
+  "statusLine": {
+    "command": "zsh ~/.claude/statusline-command.sh",
+    "type": "command"
+  },
+  "teammateMode": "auto",
+  "tui": "fullscreen",
+  "voice": {
+    "enabled": true,
+    "mode": "hold"
+  },
+  "voiceEnabled": true
+}

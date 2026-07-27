@@ -24,12 +24,42 @@ Switch to **VOICE** mode by saying "vm" or "voice mode":
 
 ## Agent Coordination
 
-- Include FULL context in spawn prompts -- agents don't inherit conversation history
-- Model selection: Opus for implementation/debugging, Sonnet for review/analysis, Haiku for simple validation/formatting
+Agents get **isolated context by construction**. They never inherit session
+history -- you construct exactly what they need. This keeps them focused and
+preserves your context for coordination work.
+
+### Dispatch vocabulary (binding)
+
+When I say "subagent", "hand this off", or "async agent", that ALWAYS means a
+fresh-context dispatch. Never `subagent_type: "fork"`.
+
+| I say | You call |
+|---|---|
+| subagent / hand off / async agent | `Agent(subagent_type: "general-purpose", model: <chosen>)` |
+| search / find / explore | `Agent(subagent_type: "Explore")` |
+| plan / design the approach | `Agent(subagent_type: "Plan")` |
+| **"fork me" / "with your context"** | `subagent_type: "fork"` -- ONLY on these exact words |
+
+`model` is REQUIRED on every dispatch. An omitted model silently inherits the
+session's most expensive one. Use the least powerful model that fits the role:
+Haiku for mechanical/validation, Sonnet for review/analysis, Opus for
+implementation, debugging, and architecture.
+
+### Dispatch prompt shape
+
+Every spawn prompt contains, in order: task scope (one domain) - context needed
+to act without asking - explicit constraints ("do NOT touch X") - return format.
+
+### Return contract
+
+Agents report: `Status: DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT`,
+under 15 lines, detail to a file. It is always OK to escalate rather than guess
+-- bad work is worse than no work.
+
+- Parallel: issue all dispatches in ONE response. One per response = sequential.
 - When agents share a branch, assign distinct file ownership to avoid merge conflicts
 - Always verify agent output (run tests, check types) before committing
-- Use built-in Task/Team tools -- never file-based coordination (STATUS.md, HANDOFF.md)
-- Clean up teams with TeamDelete when work is complete
+- Use built-in Agent/SendMessage -- never file-based coordination (STATUS.md, HANDOFF.md)
 
 ## Tool Usage
 
