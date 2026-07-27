@@ -5,7 +5,7 @@
 All non-trivial work follows: **Research -> Plan -> Implement -> Verify**
 
 - **Research**: Understand the problem. Read relevant code, docs, issues. No changes yet.
-- **Plan**: Propose approach. For multi-step features, use the brain planning workflow (`/spec` or `brain_workflow_start`). For smaller tasks, discuss the approach and get approval before proceeding.
+- **Plan**: Propose approach. For multi-step features, dispatch `Agent(subagent_type: "Plan")`, or start with `/brainstorming` when the requirements themselves are still open. For smaller tasks, discuss the approach and get approval before proceeding. Plan mode is denied -- never propose it.
 - **Implement**: Make changes. One logical change at a time. Keep diffs small and reviewable.
 - **Verify**: Run tests, linters, type checks. Confirm behavior matches intent. Never skip this.
 
