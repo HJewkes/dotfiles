@@ -12,10 +12,19 @@
     "claude-code-setup@claude-plugins-official": true,
     "claude-md-management@claude-plugins-official": true,
     "playwright@claude-plugins-official": true,
-    "typescript-lsp@claude-plugins-official": true
+    "typescript-lsp@claude-plugins-official": true,
+    "voltras-channel@voltras-local": true
   },
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "extraKnownMarketplaces": {
+    "voltras-local": {
+      "source": {
+        "path": "/Users/hjewkes/projects/voltras-mcp",
+        "source": "directory"
+      }
+    }
   },
   "hooks": {
     "Notification": [
@@ -40,7 +49,8 @@
       "WebFetch",
       "WebSearch",
       "mcp__active-work__*",
-      "mcp__claude-in-chrome__*"
+      "mcp__claude-in-chrome__*",
+      "mcp__plugin_voltras-channel_voltras__*"
     ],
     "defaultMode": "default",
     "deny": [
