@@ -26,9 +26,9 @@ Done:
 
 - Nameservers propagated. Both `1.1.1.1` and `8.8.8.8` return the Cloudflare pair.
 - **Delivery verified.** A test message to both aliases shows `Forwarded` for each
-  in the Email Routing activity log. Note that Gmail suppresses the inbox copy of
-  a message you sent to yourself, so the activity log is the evidence, not the
-  inbox.
+  in the Email Routing activity log, with SPF pass, DKIM pass, ARC pass, and
+  DMARC `none` (which is the `p=none` policy being applied, not a failure). See
+  "The self-send test gotcha" below before re-testing.
 - Site repointed at GitHub Pages (see below).
 
 Remaining:
@@ -181,6 +181,31 @@ routing. Put the zone in the other account, the one `mascot-madness` uses.
 - **Reconsider the HostGator plan.** You are paying for hosting that serves
   nothing. Do not cancel until after the nameserver cutover completes, since the
   registrar is IONOS but the DNS is HostGator's.
+## The self-send test gotcha
+
+Do not test these aliases by sending from `hjewkes@gmail.com`. Gmail
+deduplicates by `Message-ID`. The forwarded copy comes back carrying the
+Message-ID Gmail assigned when you sent it, Gmail sees an ID already in the
+mailbox, and discards the copy. It lands in no folder, not even All Mail.
+
+This is not a routing failure. Cloudflare detects the pattern and sends a
+courtesy notice from `noreply@email.cloudflare.net`, delivered through the
+routing domain itself:
+
+> Some email clients, such as Gmail, deduplicate emails. An email sent from the
+> same account may not show up in your inbox. We recommend you send your test
+> email from a different address than the destination address you are routing to.
+
+That notice is itself proof the domain receives and forwards external mail
+correctly, since it arrives from a sender that is not you.
+
+To test properly, send from an address outside the destination mailbox, or read
+the Email Routing activity log, which shows per-recipient status and
+authentication results regardless of what Gmail does with the copy.
+
+Related: the Gmail MCP connector failed to return that notice for five separate
+queries while it sat unread in the Inbox. See the `checking-gmail` skill.
+
 ## DMARC
 
 Email Routing is receive-only, and Cloudflare adds its own SPF record
