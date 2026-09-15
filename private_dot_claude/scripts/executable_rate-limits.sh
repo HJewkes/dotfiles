@@ -3,7 +3,20 @@
 # Output: 5HR_PCT|WEEKLY_PCT|5HR_RESET_EPOCH|WEEKLY_RESET_EPOCH
 # On failure: "unknown"
 
-CACHE_FILE="$HOME/.claude/status-cache/rate_limits"
+CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+CONFIG_DIR="$(cd "$CONFIG_DIR" 2>/dev/null && pwd -P)" || CONFIG_DIR="$HOME/.claude"
+
+# Claude Code namespaces the Keychain item per config directory: the default
+# ~/.claude uses the bare service name, every other config dir appends the first
+# eight hex of the SHA-256 of its absolute path. Without this the status line
+# reports the default account's usage no matter which profile is active.
+if [[ "$CONFIG_DIR" == "$(cd "$HOME/.claude" 2>/dev/null && pwd -P)" ]]; then
+    KEYCHAIN_SERVICE="Claude Code-credentials"
+else
+    KEYCHAIN_SERVICE="Claude Code-credentials-$(printf '%s' "$CONFIG_DIR" | shasum -a 256 | cut -c1-8)"
+fi
+
+CACHE_FILE="$CONFIG_DIR/status-cache/rate_limits"
 CACHE_TTL=60
 
 read_cache() {
@@ -29,7 +42,7 @@ iso_to_epoch() {
 
 fetch_usage() {
     local cred_json token response
-    cred_json=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null) || return 1
+    cred_json=$(security find-generic-password -s "$KEYCHAIN_SERVICE" -w 2>/dev/null) || return 1
     token=$(echo "$cred_json" | jq -r '.claudeAiOauth.accessToken // .accessToken // empty' 2>/dev/null)
     if [[ -z "$token" ]]; then
         return 1
