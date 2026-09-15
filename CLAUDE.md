@@ -5,7 +5,7 @@
 All non-trivial work follows: **Research -> Plan -> Implement -> Verify**
 
 - **Research**: Understand the problem. Read relevant code, docs, issues. No changes yet.
-- **Plan**: Propose approach. For multi-step features, dispatch `Agent(subagent_type: "Plan")`, or start with `/brainstorming` when the requirements themselves are still open. For smaller tasks, discuss the approach and get approval before proceeding. Plan mode is denied -- never propose it.
+- **Plan**: Propose approach. For multi-step features, use the agent-orchestration skill (see Agent Coordination below), or start with `/brainstorming` when the requirements themselves are still open. For smaller tasks, discuss the approach and get approval before proceeding. Plan mode is denied -- never propose it.
 - **Implement**: Make changes. One logical change at a time. Keep diffs small and reviewable.
 - **Verify**: Run tests, linters, type checks. Confirm behavior matches intent. Never skip this.
 
@@ -24,42 +24,22 @@ Switch to **VOICE** mode by saying "vm" or "voice mode":
 
 ## Agent Coordination
 
-Agents get **isolated context by construction**. They never inherit session
-history -- you construct exactly what they need. This keeps them focused and
-preserves your context for coordination work.
+**As of 2026-07-31, Claude Code's built-in `Agent` tool and `SendMessage`/agent-teams
+machinery are denied machine-wide**, as a deliberate experiment -- all agent dispatch,
+messaging, and "fork me" requests now go through the **agent-orchestration skill**
+(bundled with the agent-chat plugin). Invoke it whenever you would have reached for
+`Agent`/`SendMessage`/`fork`; it carries the full profile-mapping vocabulary, the
+`ToolSearch` step needed to load agent-chat's deferred tools, and the known `fork` gap
+(CC-44). Full rationale and exact unwind instructions live in
+`~/projects/agent-chat/docs/replacing-built-in-agent-dispatch.md`.
 
-### Dispatch vocabulary (binding)
+Worktree isolation is per-machine budget-capped (3 concurrent as of 2026-08) -- check
+`agent_list` / `git worktree list` before spawning a worktree-isolated agent, and don't
+free up a worktree that backs an open PR just to make room.
 
-When I say "subagent", "hand this off", or "async agent", that ALWAYS means a
-fresh-context dispatch. Never `subagent_type: "fork"`.
-
-| I say | You call |
-|---|---|
-| subagent / hand off / async agent | `Agent(subagent_type: "general-purpose", model: <chosen>)` |
-| search / find / explore | `Agent(subagent_type: "Explore")` |
-| plan / design the approach | `Agent(subagent_type: "Plan")` |
-| **"fork me" / "with your context"** | `subagent_type: "fork"` -- ONLY on these exact words |
-
-`model` is REQUIRED on every dispatch. An omitted model silently inherits the
-session's most expensive one. Use the least powerful model that fits the role:
-Haiku for mechanical/validation, Sonnet for review/analysis, Opus for
-implementation, debugging, and architecture.
-
-### Dispatch prompt shape
-
-Every spawn prompt contains, in order: task scope (one domain) - context needed
-to act without asking - explicit constraints ("do NOT touch X") - return format.
-
-### Return contract
-
-Agents report: `Status: DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT`,
-under 15 lines, detail to a file. It is always OK to escalate rather than guess
--- bad work is worse than no work.
-
-- Parallel: issue all dispatches in ONE response. One per response = sequential.
-- When agents share a branch, assign distinct file ownership to avoid merge conflicts
-- Always verify agent output (run tests, check types) before committing
-- Use built-in Agent/SendMessage -- never file-based coordination (STATUS.md, HANDOFF.md)
+Spawned agents get **isolated context by construction**. They never inherit session
+history -- you construct exactly what they need in the `brief`. This keeps them focused
+and preserves your context for coordination work.
 
 ## Tool Usage
 
@@ -89,6 +69,13 @@ under 15 lines, detail to a file. It is always OK to escalate rather than guess
 - One logical change per commit
 - Feature branches for all work: `feat/`, `fix/`, `refactor/`, `docs/`
 - Commit messages: short subject (<72 chars), blank line, body if needed
+
+## Turn Endings
+
+Every turn that ends without a pending tool result must end with
+`AskUserQuestion` -- either a clarifying question needed to proceed, or a
+proposal of next steps for me to approve/redirect. Never end a turn on a bare
+summary or status update alone.
 
 ## Harness Commands
 
