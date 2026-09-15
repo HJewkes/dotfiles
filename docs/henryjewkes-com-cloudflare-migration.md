@@ -93,4 +93,37 @@ routing. Put the zone in the other account, the one `mascot-madness` uses.
 - **Reconsider the HostGator plan.** You are paying for hosting that serves
   nothing. Do not cancel until after the nameserver cutover completes, since the
   registrar is IONOS but the DNS is HostGator's.
-- **Add a DMARC record** once Email Routing is live.
+## DMARC
+
+Email Routing is receive-only, and Cloudflare adds its own SPF record
+(`v=spf1 include:_spf.mx.cloudflare.net ~all`) when you enable it. Leave that
+one alone; Cloudflare manages it.
+
+DMARC is yours to add. Deploy in two stages rather than jumping to enforcement.
+
+**Stage 1, on the day Email Routing goes live.** Monitor only, breaks nothing:
+
+```
+Name:  _dmarc
+Type:  TXT
+Value: v=DMARC1; p=none; rua=mailto:hjewkes@gmail.com; fo=1
+```
+
+**Stage 2, after two weeks of clean reports.** Nothing legitimate sends from
+this domain, so enforcement should be strict:
+
+```
+Name:  _dmarc
+Type:  TXT
+Value: v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s; rua=mailto:hjewkes@gmail.com; fo=1
+```
+
+**The one thing that would break stage 2.** If you ever configure Gmail's "Send
+mail as" to send outbound as `agentic@` or `coach@`, that mail leaves through
+Google's SMTP and will not align with the Cloudflare SPF record. Either keep
+these addresses receive-only, or stay at `p=none` and add a Gmail `include:` to
+SPF before tightening. Receive-only is the simpler choice and is all the Claude
+accounts need.
+
+Reports arrive as XML attachments. Two weeks at `p=none` is enough to see
+whether anything unexpected is sending as the domain.
