@@ -10,20 +10,42 @@ Multiple accounts are permitted. Nothing in the published terms caps accounts pe
 person. For isolation of concerns alone, per-project `CLAUDE_CONFIG_DIR` profiles
 on one account give you most of the benefit without a second subscription.
 
-## Decision, 2026-09-14
+## Decision, 2026-09-14 — implemented and verified 2026-09-15
 
-Three profiles (`workout`, `agents`, `personal`) via `claude-profile`, defined in
-`dot_zsh/claude.zsh`. Two of them get their own Claude account:
+Three profiles via `claude-profile`, defined in `dot_zsh/claude.zsh`. Two of them
+have their own Claude account. Verified with `claude auth status` per profile:
 
-| Profile | Account |
-| --- | --- |
-| `agents` | `agentic@henryjewkes.com` (new) |
-| `workout` | `coach@henryjewkes.com` (new) |
-| `personal` | `hjewkes@gmail.com` (existing Max) |
+| Profile | Account | Plan |
+| --- | --- | --- |
+| `agents` | `agentic@henryjewkes.com` | max |
+| `workout` | `coach@henryjewkes.com` | max |
+| `personal` | `hjewkes@gmail.com` | max |
+| *(default `~/.claude`)* | `hjewkes@gmail.com` | max |
 
-The two new addresses come from Cloudflare Email Routing on `henryjewkes.com`,
-which requires migrating that domain's DNS off HostGator first. See
-`henryjewkes-com-cloudflare-migration.md`.
+The two new addresses come from Cloudflare Email Routing on `henryjewkes.com`.
+See `henryjewkes-com-cloudflare-migration.md`.
+
+### Binding gotcha: the browser session wins, not `--email`
+
+`claude auth login --claudeai --email <address>` only *prefills* the login form.
+The OAuth callback authenticates whichever account is signed in at claude.ai in
+the default browser. Binding `personal` while signed in as `coach@` bound coach,
+not the intended account, and it had to be redone.
+
+Check the account name in the claude.ai sidebar before approving each login.
+
+Also: always carry the config dir inline.
+
+```bash
+CLAUDE_CONFIG_DIR=$HOME/.claude-profiles/<profile> claude auth login --claudeai --email <address>
+```
+
+A bare `claude auth login` writes to `~/.claude` and would replace the default
+Max session.
+
+Watch anthropics/claude-code#94195, where subscription metadata can go stale when
+switching accounts. It did not occur here; all four profiles reported `max`
+correctly on first check.
 
 ## What the terms actually say
 

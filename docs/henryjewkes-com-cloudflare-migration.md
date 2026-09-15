@@ -31,11 +31,17 @@ Done:
   "The self-send test gotcha" below before re-testing.
 - Site repointed at GitHub Pages (see below).
 
+- **Accounts created and bound** on 2026-09-15. `agentic@` and `coach@` both
+  received their Anthropic signup mail through these aliases, which is the real
+  end-to-end proof. See `claude-account-separation.md` for the profile mapping
+  and the OAuth binding gotcha.
+
 Remaining:
 
-- Create the two Claude accounts and bind them to profiles (step 7).
+- Merge HJewkes/henryjewkes-com#1 so the site renders (Vite base path).
 - Wait for GitHub to issue the Pages certificate, then enable Enforce HTTPS.
-- Tighten DMARC to `p=reject` after two weeks of clean reports.
+- Tighten DMARC to `p=reject` after two weeks of clean reports, around
+  2026-09-29.
 
 ## The dead site
 
