@@ -24,11 +24,18 @@ Done:
   `cf2024-1._domainkey` DKIM TXT, and the Cloudflare SPF TXT.
 - Stage-1 DMARC TXT added at `_dmarc`.
 
+- Nameservers propagated. Both `1.1.1.1` and `8.8.8.8` return the Cloudflare pair.
+- **Delivery verified.** A test message to both aliases shows `Forwarded` for each
+  in the Email Routing activity log. Note that Gmail suppresses the inbox copy of
+  a message you sent to yourself, so the activity log is the evidence, not the
+  inbox.
+- Site repointed at GitHub Pages (see below).
+
 Remaining:
 
-- Wait for resolver caches to expire, then confirm the zone shows Active.
 - Create the two Claude accounts and bind them to profiles (step 7).
-- Decide what the apex should actually serve (see "The dead site").
+- Wait for GitHub to issue the Pages certificate, then enable Enforce HTTPS.
+- Tighten DMARC to `p=reject` after two weeks of clean reports.
 
 ## The dead site
 
@@ -45,9 +52,25 @@ So the domain resolved through HostGator to a dead shared-hosting error page.
 The Cloudflare import faithfully copied that dead state, which is correct as a
 pure lift but is not where the records should stay.
 
-To actually publish the site: set the three A records in Cloudflare to the four
-GitHub Pages addresses, set the custom domain in the repo's Pages settings, and
-let GitHub issue its certificate. The wildcard should be deleted either way.
+This was fixed on 2026-09-14. The zone now holds:
+
+| Name | Type | Value | Proxy |
+| --- | --- | --- | --- |
+| `henryjewkes.com` | A | `185.199.108.153` | DNS only |
+| `henryjewkes.com` | A | `185.199.109.153` | DNS only |
+| `henryjewkes.com` | A | `185.199.110.153` | DNS only |
+| `henryjewkes.com` | A | `185.199.111.153` | DNS only |
+| `www` | CNAME | `hjewkes.github.io` | DNS only |
+
+The wildcard is deleted. `cname` on the Pages API is now `henryjewkes.com`.
+
+**Why DNS only rather than proxied.** GitHub validates the domain over HTTP to
+issue its Let's Encrypt certificate. Proxying through Cloudflare breaks that
+validation, so Enforce HTTPS never becomes available. Leave these grey-clouded.
+Cloudflare still serves the DNS; it just is not in the request path.
+
+`https_enforced` is currently `false` because no certificate exists yet. Once
+GitHub issues one, turn Enforce HTTPS on in the repo's Pages settings.
 
 ## Current state
 
