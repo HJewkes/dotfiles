@@ -1,10 +1,53 @@
 # henryjewkes.com: HostGator to Cloudflare, plus Email Routing
 
-Runbook for moving `henryjewkes.com` DNS to Cloudflare and standing up email
-aliases for the Claude profile accounts. Surveyed 2026-09-14. Nothing executed
-yet; steps 3 and 5 need an interactive login and are yours to run.
+Moving `henryjewkes.com` DNS to Cloudflare and standing up email aliases for the
+Claude profile accounts. Surveyed and **executed 2026-09-14**; see "Status" below
+for what is done and what remains.
 
 Companion doc: `claude-account-separation.md`.
+
+## Status
+
+Done:
+
+- Zone `henryjewkes.com` created on the Free plan in `Hjewkes@gmail.com's Account`
+  (`588a4144e18ac484905121eda2826d61`).
+- Three A records imported unchanged (apex, `www`, `*`), all `192.254.250.172`,
+  all proxied.
+- Nameservers changed at IONOS to `aitana.ns.cloudflare.com` and
+  `kipp.ns.cloudflare.com`. The registry reflects this already.
+- Email Routing enabled. `hjewkes@gmail.com` added as a destination and verified
+  automatically, no confirmation click needed.
+- Routing rules active: `agentic@henryjewkes.com` and `coach@henryjewkes.com`,
+  both to `hjewkes@gmail.com`.
+- Email Routing DNS added: three MX (`route1/2/3.mx.cloudflare.net`), the
+  `cf2024-1._domainkey` DKIM TXT, and the Cloudflare SPF TXT.
+- Stage-1 DMARC TXT added at `_dmarc`.
+
+Remaining:
+
+- Wait for resolver caches to expire, then confirm the zone shows Active.
+- Create the two Claude accounts and bind them to profiles (step 7).
+- Decide what the apex should actually serve (see "The dead site").
+
+## The dead site
+
+The site was broken for a reason worth recording. `HJewkes/henryjewkes-com` is a
+real personal-site repo with GitHub Pages enabled, serving at
+`hjewkes.github.io/henryjewkes-com`. IONOS held A records pointing at GitHub
+Pages (`185.199.108-111.153`), but two things were never finished:
+
+1. The registry delegation still pointed at HostGator, so the IONOS zone was
+   never authoritative and those records never took effect.
+2. GitHub Pages has no custom domain set (`cname: null` on the Pages API).
+
+So the domain resolved through HostGator to a dead shared-hosting error page.
+The Cloudflare import faithfully copied that dead state, which is correct as a
+pure lift but is not where the records should stay.
+
+To actually publish the site: set the three A records in Cloudflare to the four
+GitHub Pages addresses, set the custom domain in the repo's Pages settings, and
+let GitHub issue its certificate. The wildcard should be deleted either way.
 
 ## Current state
 
