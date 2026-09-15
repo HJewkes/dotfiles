@@ -1,0 +1,96 @@
+# henryjewkes.com: HostGator to Cloudflare, plus Email Routing
+
+Runbook for moving `henryjewkes.com` DNS to Cloudflare and standing up email
+aliases for the Claude profile accounts. Surveyed 2026-09-14. Nothing executed
+yet; steps 3 and 5 need an interactive login and are yours to run.
+
+Companion doc: `claude-account-separation.md`.
+
+## Current state
+
+Registrar is IONOS SE. Registry expiry 2027-07-11. DNS is served by HostGator
+(`NS1775.HOSTGATOR.COM`, `NS1776.HOSTGATOR.COM`).
+
+The entire zone, as enumerated against the authoritative nameserver:
+
+| Name | Type | Value |
+| --- | --- | --- |
+| `henryjewkes.com` | A | `192.254.250.172` |
+| `*.henryjewkes.com` | A | `192.254.250.172` |
+
+Confirmed absent: AAAA, MX, TXT, CAA. No SPF, no DKIM, no DMARC. The wildcard is
+real, verified by resolving a random label. AXFR is refused, as expected.
+
+`192.254.250.172` is HostGator shared hosting. It serves an Apache error page
+("Error. Page cannot be displayed") over HTTP 200, and HTTPS fails certificate
+validation because the cert does not match the hostname. Nothing of value is
+hosted there.
+
+**Migration risk is therefore near zero.** There is no live site to break and no
+mail flow to preserve.
+
+## Target state
+
+Zone on Cloudflare. Email Routing enabled with two forwarding aliases into the
+existing Gmail inbox, one per new Claude account:
+
+| Alias | Destination | Claude profile |
+| --- | --- | --- |
+| `agentic@henryjewkes.com` | `hjewkes@gmail.com` | `agents` |
+| `coach@henryjewkes.com` | `hjewkes@gmail.com` | `workout` |
+
+The `personal` profile stays on the existing `hjewkes@gmail.com` Max account.
+
+## Which Cloudflare account
+
+Not relay's. R-44 moved relay's Worker, D1 and KV into a dedicated Cloudflare
+account precisely to remove the cross-reach that R-20 documented. Adding a zone
+to that account hands every "all zones" token there authority over your email
+routing. Put the zone in the other account, the one `mascot-madness` uses.
+
+## Steps
+
+1. **Record inventory.** Done, see the table above. Two A records, nothing else.
+
+2. **Create the zone.** Add `henryjewkes.com` to the chosen Cloudflare account.
+   Cloudflare's onboarding scan will find both A records; verify it produced
+   exactly the two rows above and nothing invented.
+
+3. **Change nameservers at IONOS.** Interactive, registrar side. Replace the two
+   HostGator nameservers with the pair Cloudflare assigns. Propagation is
+   typically under an hour; Cloudflare emails when the zone goes active.
+
+4. **Verify before trusting.** `dig NS henryjewkes.com` returns the Cloudflare
+   pair, and `dig +short henryjewkes.com` still returns `192.254.250.172` (or
+   whatever you have repointed it to by then).
+
+5. **Enable Email Routing.** Cloudflare adds its own MX and SPF records
+   automatically. Add the two aliases, then verify `hjewkes@gmail.com` as a
+   destination by clicking the confirmation link Cloudflare sends there.
+   Verification is per destination address, once, not per alias.
+
+6. **Create the Claude accounts.** Sign up at claude.ai with `agentic@` and
+   `coach@`. Remember that a Claude account's email can never be changed, so
+   these addresses are permanent.
+
+7. **Bind each profile to its account.**
+
+   ```
+   claude-profile agents   && claude auth login --claudeai --email agentic@henryjewkes.com
+   claude-profile workout  && claude auth login --claudeai --email coach@henryjewkes.com
+   ```
+
+   Watch for anthropics/claude-code#94195: subscription metadata can go stale
+   when switching accounts. `claude auth status` should report the right email
+   and `subscriptionType` before you trust a profile.
+
+## Cleanup worth doing afterward
+
+- **Drop the wildcard.** `*.henryjewkes.com` pointing at a dead shared host is a
+  liability, not a feature. Replicate it through the cutover so the migration is
+  a pure lift, then delete it once the zone is active.
+- **Repoint or remove the apex.** It currently serves a HostGator error page.
+- **Reconsider the HostGator plan.** You are paying for hosting that serves
+  nothing. Do not cancel until after the nameserver cutover completes, since the
+  registrar is IONOS but the DNS is HostGator's.
+- **Add a DMARC record** once Email Routing is live.
