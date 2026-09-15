@@ -72,6 +72,28 @@ Cloudflare still serves the DNS; it just is not in the request path.
 `https_enforced` is currently `false` because no certificate exists yet. Once
 GitHub issues one, turn Enforce HTTPS on in the repo's Pages settings.
 
+### One thing still broken: the Vite base path
+
+GitHub Pages now serves the right site (`Server: GitHub.com`, title "Henry
+Jewkes"), and `www` 301s to the apex. But every asset 404s:
+
+```
+$ curl -I http://henryjewkes.com/henryjewkes-com/assets/index-k2RVs94w.js
+404
+```
+
+`vite.config.ts` in `HJewkes/henryjewkes-com` sets `base: '/henryjewkes-com/'`,
+which is correct for a project page at `hjewkes.github.io/henryjewkes-com/` and
+wrong for a custom domain serving at the root. The HTML loads; the JS and CSS
+do not, so the page renders blank.
+
+Fix is one line, `base: '/'`, plus a rebuild and redeploy. Not done here because
+it is a code change in a separate repo.
+
+Note that local DNS/HTTP caches on this machine kept returning the old HostGator
+error page for a while after cutover. Use
+`curl --resolve henryjewkes.com:80:185.199.108.153` to check the real thing.
+
 ## Current state
 
 Registrar is IONOS SE. Registry expiry 2027-07-11. DNS is served by HostGator
