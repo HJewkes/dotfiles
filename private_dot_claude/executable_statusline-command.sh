@@ -223,7 +223,8 @@ detect_git_state() {
 
 # ── RATE LIMIT DATA ────────────────────────────────────────
 rate_data=$("$HOME/.claude/scripts/rate-limits.sh" 2>/dev/null)
-IFS='|' read -r rate_5hr rate_weekly rate_5hr_reset rate_weekly_reset <<< "$rate_data"
+IFS='|' read -r rate_5hr rate_weekly rate_5hr_reset rate_weekly_reset \
+    rate_scoped rate_scoped_model rate_weekly_sev rate_scoped_sev <<< "$rate_data"
 [[ -z "$rate_5hr" ]] && rate_5hr="unknown"
 [[ -z "$rate_weekly" ]] && rate_weekly="unknown"
 
@@ -239,6 +240,17 @@ pct_to_bar() {
     elif (( pct >= 15 )); then printf '\u2582'
     else printf '\u2581'
     fi
+}
+
+# The usage API classifies each limit itself, so prefer its verdict over
+# re-deriving thresholds. Falls back to pct_to_color when severity is absent.
+sev_to_color() {
+    case "$1" in
+        critical) echo "${BOLD}${FG_RED}" ;;
+        warning)  echo "$FG_PEACH" ;;
+        normal)   echo "$FG_GREEN" ;;
+        *)        pct_to_color "$2" ;;
+    esac
 }
 
 pct_to_color() {
@@ -441,14 +453,25 @@ pill2=" ${FG_BLUE}${ICON_LROUND}${BG_BLUE} ${blue_part}${teal_part}${gray_part} 
 bar_5hr=$(pct_to_bar "$rate_5hr")
 bar_weekly=$(pct_to_bar "$rate_weekly")
 color_5hr=$(pct_to_color "$rate_5hr")
-color_weekly=$(pct_to_color "$rate_weekly")
+color_weekly=$(sev_to_color "$rate_weekly_sev" "$rate_weekly")
+
+# Third bar: the per-model weekly cap, shown only when that model is the one in
+# use. Without this the Fable cap can sit at 88% while the two visible bars look
+# fine, because weekly_all and weekly_scoped are separate budgets.
+bar_scoped=""
+if [[ -n "$rate_scoped" && "$rate_scoped" != "unknown" && -n "$rate_scoped_model" ]]; then
+    scoped_family="${rate_scoped_model:l}"
+    if [[ "${model_name%% *}" == "$scoped_family" ]]; then
+        bar_scoped=$(pct_to_bar "$rate_scoped")
+    fi
+fi
 
 rate_pct_display=""
 if [[ "$rate_5hr" != "unknown" ]] && (( rate_5hr >= 80 )); then
     rate_pct_display=" ${rate_5hr}%"
 fi
 
-pill3=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL}${FG_TEAL_DIM} ${model_icon} ${model_name} ${bar_5hr}${bar_weekly}${rate_pct_display} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
+pill3=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL}${FG_TEAL_DIM} ${model_icon} ${model_name} ${bar_5hr}${bar_weekly}${bar_scoped}${rate_pct_display} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
 
 # Pill 4: Session — combines time + ID
 pill4=" ${FG_FLAMINGO}${ICON_LROUND}${BG_FLAMINGO}${FG_FLAMINGO_DIM} ${session_time} ${FG_CRUST}${session_id} ${RST}${FG_FLAMINGO}${ICON_RROUND}${RST}"
@@ -463,7 +486,7 @@ else
 fi
 
 # Rate pill without model label
-pill3_no_model=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL} ${FG_TEAL_DIM}${bar_5hr}${bar_weekly}${rate_pct_display} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
+pill3_no_model=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL} ${FG_TEAL_DIM}${bar_5hr}${bar_weekly}${bar_scoped}${rate_pct_display} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
 
 # Session pill without time (ID only)
 pill4_no_time=" ${FG_FLAMINGO}${ICON_LROUND}${BG_FLAMINGO}${FG_CRUST} ${session_id} ${RST}${FG_FLAMINGO}${ICON_RROUND}${RST}"
