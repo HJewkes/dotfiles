@@ -44,4 +44,18 @@ claude-profile() {
   esac
 }
 
+# Baseline profile for new shells. Set to "default" (or empty) to go back to
+# ~/.claude. Short-term measure while the default account's weekly limit is
+# exhausted; see docs/claude-account-separation.md.
+CLAUDE_DEFAULT_PROFILE="${CLAUDE_DEFAULT_PROFILE-agents}"
+
+# Only when the caller has not already chosen one. `aw` and agent-chat pass
+# CLAUDE_CONFIG_DIR explicitly for an initiative's declared profile, and that
+# choice has to survive the shell they launch into.
+if [[ -z ${CLAUDE_CONFIG_DIR:-} && -n $CLAUDE_DEFAULT_PROFILE
+      && $CLAUDE_DEFAULT_PROFILE != default ]]; then
+  _claude_profile_link "$CLAUDE_PROFILE_ROOT/$CLAUDE_DEFAULT_PROFILE"
+  export CLAUDE_CONFIG_DIR="$CLAUDE_PROFILE_ROOT/$CLAUDE_DEFAULT_PROFILE"
+fi
+
 compdef '_values "claude profile" $(_claude_profile_list)' claude-profile 2>/dev/null

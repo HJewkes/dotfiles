@@ -25,6 +25,26 @@ have their own Claude account. Verified with `claude auth status` per profile:
 The two new addresses come from Cloudflare Email Routing on `henryjewkes.com`.
 See `henryjewkes-com-cloudflare-migration.md`.
 
+### Baseline profile for new shells (short-term, 2026-09-15)
+
+`dot_zsh/claude.zsh` exports `CLAUDE_CONFIG_DIR` for the `agents` profile in
+every new shell, because the default account hit 100% of its weekly limit
+(resets Sat 19 Sep 18:00 MDT) while `agents` sat at 1%.
+
+Precedence, highest first:
+
+1. A `CLAUDE_CONFIG_DIR` already in the environment — `aw` and agent-chat set
+   this for an initiative's declared `profile`, and it survives the shell they
+   launch into.
+2. `CLAUDE_DEFAULT_PROFILE`, defaulting to `agents`.
+3. `~/.claude`, when `CLAUDE_DEFAULT_PROFILE` is `default` or empty.
+
+So an initiative that declares a profile still gets it, and one that declares
+none now runs on `agents` rather than the default account.
+
+To revert, set `CLAUDE_DEFAULT_PROFILE=default` for one shell, or change the
+default in `dot_zsh/claude.zsh` to make it permanent.
+
 ### Binding gotcha: the browser session wins, not `--email`
 
 `claude auth login --claudeai --email <address>` only *prefills* the login form.
