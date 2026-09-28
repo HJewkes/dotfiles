@@ -1,0 +1,28 @@
+{
+  "HJewkes/mascot-madness": {
+    "reason": "No PR has ever merged, so discovery cannot confirm PR checks. ci.yml runs job test on push and pull_request; deploy.yml and Workers Builds run on main only.",
+    "required_checks": [
+      "test"
+    ]
+  },
+  "HJewkes/voltra-node-sdk": {
+    "hold": "pending vw-coord"
+  },
+  "HJewkes/voltra-playground": {
+    "hold": "pending vw-coord"
+  },
+  "HJewkes/voltras-mcp": {
+    "hold": "pending vw-coord",
+    "reason": "Keeps require_code_owner_review. It goes on outside-approval, where the admin PR bypass lets the owner merge; on no-direct-push it would block every owner PR.",
+    "rule_parameters": {
+      "outside-approval": {
+        "pull_request": {
+          "require_code_owner_review": true
+        }
+      }
+    }
+  },
+  "HJewkes/workout-analytics": {
+    "hold": "pending vw-coord"
+  }
+}
