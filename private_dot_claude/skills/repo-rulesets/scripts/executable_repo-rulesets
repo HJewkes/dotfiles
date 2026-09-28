@@ -1,0 +1,392 @@
+#!/usr/bin/env python3
+"""Audit and apply the owner's two-ruleset branch policy (see ../SKILL.md)."""
+
+import argparse
+import difflib
+import json
+import re
+import subprocess
+import sys
+from collections import Counter
+from pathlib import Path
+
+SKILL_DIR = Path(__file__).resolve().parent.parent
+RULESET_NAMES = ("no-direct-push", "outside-approval")
+COMPARED_FIELDS = ("name", "target", "enforcement", "conditions", "bypass_actors", "rules")
+PR_SAMPLE = 3
+WORKFLOW_PUSH = re.compile(r"git push|git-auto-commit-action|add-and-commit|github-push-action")
+
+USAGE = """repo-rulesets audit <owner/repo>|--all [--commits N]
+repo-rulesets apply <owner/repo>|--all [--yes]
+
+audit   Report current rulesets, legacy protection, discovered CI checks, direct pushes.
+apply   Print the exact JSON diff per ruleset. Changes nothing unless --yes is given.
+        With --yes, held, private and check-less repos are skipped.
+
+Reads overrides from overrides.json and ruleset bodies from templates/ in the skill dir.
+Exit: 0 nothing to do, 2 some repo needs action or has a flag, 1 error."""
+
+
+class GhError(Exception):
+    pass
+
+
+def gh(path, jq=None, method="GET", body=None):
+    cmd = ["gh", "api", path]
+    if method != "GET":
+        cmd += ["-X", method, "--input", "-"]
+    if jq:
+        cmd += ["--jq", jq]
+    payload = json.dumps(body) if body is not None else None
+    proc = subprocess.run(cmd, input=payload, capture_output=True, text=True, check=False)
+    if proc.returncode:
+        detail = proc.stderr.strip() or proc.stdout.strip() or f"gh exit {proc.returncode}"
+        raise GhError(detail.splitlines()[-1])
+    return proc.stdout
+
+
+def gh_json(path, jq):
+    out = gh(path, jq).strip()
+    return json.loads(out) if out else None
+
+
+def gh_lines(path, jq):
+    out = gh(path, jq)
+    return [json.loads(line) for line in out.splitlines() if line.strip()]
+
+
+def is_not_found(err):
+    return "HTTP 404" in str(err)
+
+
+def owned_repos():
+    jq = ".[] | select(.archived | not) | .full_name"
+    out = gh("user/repos?affiliation=owner&per_page=100", jq)
+    return sorted(out.split())
+
+
+def load_overrides():
+    return json.loads((SKILL_DIR / "overrides.json").read_text())
+
+
+def check_names(repo, sha, skip_skipped=False):
+    select = ' | select(.conclusion != "skipped")' if skip_skipped else ""
+    return set(
+        gh_json(
+            f"repos/{repo}/commits/{sha}/check-runs?per_page=100",
+            f"[.check_runs[]{select} | .name]",
+        )
+        or []
+    )
+
+
+def merged_pr_heads(repo, branch):
+    path = f"repos/{repo}/pulls?state=closed&base={branch}&sort=updated&direction=desc&per_page=30"
+    return gh_json(path, f"[.[] | select(.merged_at) | .head.sha][:{PR_SAMPLE}]") or []
+
+
+def discover_checks(repo, branch, override):
+    """Required = HEAD check names that actually ran (not skipped) on every sampled merged PR."""
+    if "required_checks" in override:
+        return {"required": override["required_checks"], "source": "override"}
+    head = check_names(repo, branch)
+    if not head:
+        return {"required": None, "problem": "no check runs on the default-branch HEAD"}
+    pr_heads = merged_pr_heads(repo, branch)
+    if not pr_heads:
+        return {
+            "required": None,
+            "head": sorted(head),
+            "problem": "no merged PR, so cannot tell which HEAD checks run on PRs",
+        }
+    on_prs = set.intersection(*(check_names(repo, sha, skip_skipped=True) for sha in pr_heads))
+    required = sorted(head & on_prs)
+    result = {
+        "required": required or None,
+        "head": sorted(head),
+        "head_only": sorted(head - on_prs),
+        "source": f"HEAD check runs that ran on all {len(pr_heads)} sampled merged PR(s)",
+    }
+    if not required:
+        result["problem"] = "no HEAD check also runs on PRs"
+    return result
+
+
+def build_desired(checks, override):
+    desired = {}
+    for name in RULESET_NAMES:
+        ruleset = json.loads((SKILL_DIR / "templates" / f"{name}.json").read_text())
+        patches = override.get("rule_parameters", {}).get(name, {})
+        for rule in ruleset["rules"]:
+            if rule["type"] == "required_status_checks":
+                rule["parameters"]["required_status_checks"] = [{"context": c} for c in checks]
+            rule.get("parameters", {}).update(patches.get(rule["type"], {}))
+        desired[name] = ruleset
+    return desired
+
+
+def normalize(ruleset):
+    if ruleset is None:
+        return None
+    body = {k: ruleset.get(k) for k in COMPARED_FIELDS}
+    body["rules"] = sorted(body["rules"] or [], key=lambda r: r["type"])
+    for rule in body["rules"]:
+        checks = rule.get("parameters", {}).get("required_status_checks")
+        if checks is not None:
+            checks.sort(key=lambda c: c["context"])
+    return body
+
+
+def fetch_rulesets(repo, branch):
+    listed = gh_json(f"repos/{repo}/rulesets?includes_parents=false", "[.[] | {id, name}]") or []
+    full = {r["id"]: gh_json(f"repos/{repo}/rulesets/{r['id']}", ".") for r in listed}
+    applying = gh_json(f"repos/{repo}/rules/branches/{branch}", "[.[].ruleset_id] | unique") or []
+    ours = {rs["name"]: rs for rs in full.values() if rs["name"] in RULESET_NAMES}
+    legacy = [rs for rid, rs in full.items() if rs["name"] not in RULESET_NAMES and rid in applying]
+    return ours, legacy
+
+
+def describe_rule(rule):
+    params = rule.get("parameters", {})
+    if rule["type"] == "pull_request":
+        extras = [
+            k
+            for k in (
+                "require_code_owner_review",
+                "require_last_push_approval",
+                "dismiss_stale_reviews_on_push",
+            )
+            if params.get(k)
+        ]
+        return (
+            f"pull_request(approvals={params.get('required_approving_review_count')}"
+            + "".join(f", {e}" for e in extras)
+            + ")"
+        )
+    if rule["type"] == "required_status_checks":
+        names = ",".join(c["context"] for c in params.get("required_status_checks", []))
+        return f"required_status_checks({names})"
+    return rule["type"]
+
+
+def describe_ruleset(rs):
+    rules = " ".join(describe_rule(r) for r in rs.get("rules", []))
+    bypass = (
+        ", ".join(
+            f"{b['actor_type']}:{b['actor_id']}:{b['bypass_mode']}"
+            for b in rs.get("bypass_actors") or []
+        )
+        or "none"
+    )
+    return f"{rs['name']} (id {rs['id']}, {rs['enforcement']}): {rules}; bypass: {bypass}"
+
+
+def classic_protection(repo, branch):
+    jq = (
+        "{checks: .required_status_checks.contexts, "
+        "approvals: .required_pull_request_reviews.required_approving_review_count, "
+        "code_owner: .required_pull_request_reviews.require_code_owner_reviews, "
+        "enforce_admins: .enforce_admins.enabled, force_push: .allow_force_pushes.enabled, "
+        "deletions: .allow_deletions.enabled, linear: .required_linear_history.enabled, "
+        "push_restricted: (.restrictions != null)}"
+    )
+    try:
+        found = gh_json(f"repos/{repo}/branches/{branch}/protection", jq)
+    except GhError as err:
+        if is_not_found(err):
+            return None
+        raise
+    return ", ".join(f"{k}={v}" for k, v in found.items() if v not in (None, False, []))
+
+
+def direct_pushes(repo, branch, count):
+    jq = "[.[] | {sha, who: (.author.login // .commit.author.name)}]"
+    commits = gh_json(f"repos/{repo}/commits?sha={branch}&per_page={count}", jq) or []
+    direct = [
+        c
+        for c in commits
+        if not gh_json(f"repos/{repo}/commits/{c['sha']}/pulls", "[.[] | select(.merged_at)]")
+    ]
+    return len(direct), len(commits), Counter(c["who"] for c in direct)
+
+
+def workflows_that_push(repo, branch):
+    try:
+        names = (
+            gh_json(
+                f"repos/{repo}/contents/.github/workflows?ref={branch}",
+                '[.[] | select(.type == "file") | .name]',
+            )
+            or []
+        )
+    except GhError as err:
+        if is_not_found(err):
+            return []
+        raise
+    hits = []
+    for name in names:
+        text = gh(
+            f"repos/{repo}/contents/.github/workflows/{name}?ref={branch}", ".content | @base64d"
+        )
+        if WORKFLOW_PUSH.search(text):
+            hits.append(name)
+    return hits
+
+
+def repo_meta(repo):
+    return gh_json(f"repos/{repo}", "{full_name, private, archived, default_branch}")
+
+
+def plan_repo(repo, overrides):
+    meta = repo_meta(repo)
+    plan = {
+        "repo": meta["full_name"],
+        "branch": meta["default_branch"],
+        "private": meta["private"],
+        "override": overrides.get(meta["full_name"], {}),
+    }
+    if meta["private"]:
+        return plan
+    plan["checks"] = discover_checks(repo, plan["branch"], plan["override"])
+    plan["current"], plan["legacy"] = fetch_rulesets(repo, plan["branch"])
+    if plan["checks"]["required"]:
+        plan["desired"] = build_desired(plan["checks"]["required"], plan["override"])
+    return plan
+
+
+def ruleset_status(plan, name):
+    current = plan["current"].get(name)
+    if "desired" not in plan:
+        return "missing" if current is None else f"present (id {current['id']}), not compared"
+    if current is None:
+        return "missing"
+    same = normalize(current) == normalize(plan["desired"][name])
+    return f"{'compliant' if same else 'drift'} (id {current['id']})"
+
+
+def verdict(plan):
+    hold = plan["override"].get("hold")
+    if plan["private"]:
+        return "uncoverable: private repo on the free plan (API 403 Upgrade to GitHub Pro)"
+    if hold:
+        return f"held: {hold}"
+    if "desired" not in plan:
+        return "blocked: required checks not discoverable"
+    statuses = [ruleset_status(plan, n) for n in RULESET_NAMES]
+    return "compliant" if all(s.startswith("compliant") for s in statuses) else "needs apply"
+
+
+def print_checks(checks):
+    if checks.get("problem"):
+        print(
+            f"  checks: NOT DISCOVERABLE ({checks['problem']}); HEAD had {checks.get('head', [])}"
+        )
+        return
+    print(f"  checks: {', '.join(checks['required'])} [{checks['source']}]")
+    if checks.get("head_only"):
+        excluded = ", ".join(checks["head_only"])
+        print(f"  checks excluded (on HEAD, not run on every sampled PR): {excluded}")
+
+
+def print_audit(plan, commit_count):
+    print(f"== {plan['repo']} ({plan['branch']}, {'private' if plan['private'] else 'public'})")
+    if plan["override"]:
+        print(f"  override: {json.dumps(plan['override'])}")
+    if not plan["private"]:
+        print_checks(plan["checks"])
+        for name in RULESET_NAMES:
+            print(f"  {name}: {ruleset_status(plan, name)}")
+        for rs in plan["legacy"]:
+            print(f"  LEGACY ruleset: {describe_ruleset(rs)}")
+        print_pushes(plan, commit_count)
+    print(f"  verdict: {verdict(plan)}")
+
+
+def print_pushes(plan, commit_count):
+    repo, branch = plan["repo"], plan["branch"]
+    classic = classic_protection(repo, branch)
+    if classic is not None:
+        print(f"  LEGACY classic protection: {classic or 'enabled, no rules'}")
+    direct, total, who = direct_pushes(repo, branch, commit_count)
+    authors = ", ".join(f"{k} x{v}" for k, v in who.most_common())
+    print(
+        f"  direct pushes: {direct}/{total} recent commits have no merged PR"
+        + (f" ({authors})" if authors else "")
+    )
+    pushers = workflows_that_push(repo, branch)
+    if pushers:
+        print(f"  workflows containing a push step (check target branch): {', '.join(pushers)}")
+
+
+def ruleset_diff(plan, name):
+    current = plan["current"].get(name)
+    old = json.dumps(normalize(current), indent=2, sort_keys=True).splitlines() if current else []
+    new = json.dumps(normalize(plan["desired"][name]), indent=2, sort_keys=True).splitlines()
+    return list(difflib.unified_diff(old, new, "current", "desired", lineterm=""))
+
+
+def ruleset_request(plan, name):
+    current = plan["current"].get(name)
+    if current is None:
+        return "POST", f"repos/{plan['repo']}/rulesets"
+    return "PUT", f"repos/{plan['repo']}/rulesets/{current['id']}"
+
+
+def apply_repo(plan, confirmed):
+    print(f"== {plan['repo']}: {verdict(plan)}")
+    if "desired" not in plan:
+        return
+    for name in RULESET_NAMES:
+        diff = ruleset_diff(plan, name)
+        if not diff:
+            print(f"  {name}: no change")
+            continue
+        method, path = ruleset_request(plan, name)
+        print(f"  {name}: {method} {path}")
+        print("\n".join(f"    {line}" for line in diff))
+        if confirmed and not plan["override"].get("hold"):
+            gh(path, method=method, body=plan["desired"][name], jq=".id")
+            print(f"  {name}: applied")
+
+
+def run(args):
+    repos = owned_repos() if args.target == "--all" else [args.target]
+    overrides = load_overrides()
+    needs_action = False
+    for repo in repos:
+        try:
+            plan = plan_repo(repo, overrides)
+            (
+                apply_repo(plan, args.yes)
+                if args.command == "apply"
+                else print_audit(plan, args.commits)
+            )
+            needs_action |= verdict(plan) != "compliant"
+        except GhError as err:
+            print(f"== {repo}: ERROR {err}", file=sys.stderr)
+            needs_action = True
+        print()
+    return 2 if needs_action else 0
+
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(prog="repo-rulesets", usage=USAGE, add_help=False)
+    parser.add_argument("-h", "--help", action="store_true")
+    parser.add_argument("command", nargs="?", choices=("audit", "apply"))
+    parser.add_argument("target", nargs="?")
+    parser.add_argument("--all", action="store_true")
+    parser.add_argument("--yes", action="store_true")
+    parser.add_argument("--commits", type=int, default=30)
+    args = parser.parse_args(argv)
+    if args.all:
+        args.target = "--all"
+    if args.help or not args.command or not args.target:
+        print(USAGE)
+        sys.exit(0 if args.help else 1)
+    if args.yes and args.command != "apply":
+        parser.error("--yes only applies to apply")
+    return args
+
+
+if __name__ == "__main__":
+    sys.exit(run(parse_args(sys.argv[1:])))
