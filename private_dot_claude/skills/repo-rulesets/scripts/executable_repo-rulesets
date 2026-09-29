@@ -15,6 +15,12 @@ RULESET_NAMES = ("no-direct-push", "outside-approval")
 COMPARED_FIELDS = ("name", "target", "enforcement", "conditions", "bypass_actors", "rules")
 PR_SAMPLE = 3
 WORKFLOW_PUSH = re.compile(r"git push|git-auto-commit-action|add-and-commit|github-push-action")
+BRANCH_OR_PR_STEP = re.compile(
+    r"changesets/action|create-pull-request|gh pr create|" + WORKFLOW_PUSH.pattern
+)
+BOT_TOKEN = re.compile(r"secrets\.GITHUB_TOKEN|github\.token")
+APP_TOKEN = re.compile(r"create-github-app-token|github-app-token")
+TOKEN_TASK = "TP-447"
 
 USAGE = """repo-rulesets audit <owner/repo>|--all [--commits N]
 repo-rulesets apply <owner/repo>|--all [--yes]
@@ -210,7 +216,7 @@ def direct_pushes(repo, branch, count):
     return len(direct), len(commits), Counter(c["who"] for c in direct)
 
 
-def workflows_that_push(repo, branch):
+def workflow_files(repo, branch):
     try:
         names = (
             gh_json(
@@ -221,16 +227,37 @@ def workflows_that_push(repo, branch):
         )
     except GhError as err:
         if is_not_found(err):
-            return []
+            return {}
         raise
-    hits = []
-    for name in names:
-        text = gh(
+    return {
+        name: gh(
             f"repos/{repo}/contents/.github/workflows/{name}?ref={branch}", ".content | @base64d"
         )
-        if WORKFLOW_PUSH.search(text):
-            hits.append(name)
-    return hits
+        for name in names
+    }
+
+
+def workflows_that_push(workflows):
+    return [name for name, text in workflows.items() if WORKFLOW_PUSH.search(text)]
+
+
+def bot_token_workflows(workflows):
+    """Workflows that push a branch or open a PR with GITHUB_TOKEN instead of an App token."""
+    return [
+        name
+        for name, text in workflows.items()
+        if BRANCH_OR_PR_STEP.search(text) and BOT_TOKEN.search(text) and not APP_TOKEN.search(text)
+    ]
+
+
+def print_bot_token_warnings(plan):
+    for name in bot_token_workflows(plan.get("workflows", {})):
+        print(
+            f"  WARNING .github/workflows/{name}: pushes a branch or opens a PR with "
+            "GITHUB_TOKEN, so CI runs on that branch sit in action_required and never "
+            "report. Under no-direct-push (required checks, no bypass) the PR cannot merge "
+            f"until the runs are approved by hand. See task {TOKEN_TASK}."
+        )
 
 
 def repo_meta(repo):
@@ -249,6 +276,7 @@ def plan_repo(repo, overrides):
         return plan
     plan["checks"] = discover_checks(repo, plan["branch"], plan["override"])
     plan["current"], plan["legacy"] = fetch_rulesets(repo, plan["branch"])
+    plan["workflows"] = workflow_files(repo, plan["branch"])
     if plan["checks"]["required"]:
         plan["desired"] = build_desired(plan["checks"]["required"], plan["override"])
     return plan
@@ -299,6 +327,7 @@ def print_audit(plan, commit_count):
         for rs in plan["legacy"]:
             print(f"  LEGACY ruleset: {describe_ruleset(rs)}")
         print_pushes(plan, commit_count)
+        print_bot_token_warnings(plan)
     print(f"  verdict: {verdict(plan)}")
 
 
@@ -313,7 +342,7 @@ def print_pushes(plan, commit_count):
         f"  direct pushes: {direct}/{total} recent commits have no merged PR"
         + (f" ({authors})" if authors else "")
     )
-    pushers = workflows_that_push(repo, branch)
+    pushers = workflows_that_push(plan["workflows"])
     if pushers:
         print(f"  workflows containing a push step (check target branch): {', '.join(pushers)}")
 
@@ -334,6 +363,7 @@ def ruleset_request(plan, name):
 
 def apply_repo(plan, confirmed):
     print(f"== {plan['repo']}: {verdict(plan)}")
+    print_bot_token_warnings(plan)
     if "desired" not in plan:
         return
     for name in RULESET_NAMES:
