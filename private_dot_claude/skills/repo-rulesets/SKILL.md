@@ -61,6 +61,8 @@ Required checks are the check-run names on the default-branch HEAD that also ran
 - **Direct pushes**: how many of the last N default-branch commits have no merged PR, by author.
 - **Workflows with a push step**, such as release bots that commit version bumps to main. `no-direct-push` has no bypass, so these break and must move to a PR-based release.
 
+- **Bot-token warning**: a workflow that pushes a branch or opens a PR with `secrets.GITHUB_TOKEN` and no App token. It is a warning only. It also prints in dry-run `apply` and never blocks. See the gotcha below.
+
 Only `gh api` REST calls are used. GraphQL is rate-limited on this account. Filtering happens with `--jq` inside gh.
 
 ## Overrides
@@ -75,3 +77,13 @@ Only `gh api` REST calls are used. GraphQL is rate-limited on this account. Filt
 | `reason` | Free text shown in the audit. |
 
 Remove a `hold` once the blocking decision lands.
+
+## Gotcha: PRs opened by github-actions[bot] never get CI (TP-447)
+
+Found 2026-09-28 in titan-platform. `release.yml` runs `changesets/action` with `GITHUB_TOKEN`, so github-actions[bot] pushes the `changeset-release/main` branch. GitHub holds CI runs triggered by that bot in `action_required`, and they never report. `no-direct-push` requires checks and has no bypass, so the Version Packages PR cannot merge. PR #173's head e0e97fd had zero check runs.
+
+Spot it: `audit` prints `WARNING .github/workflows/<file>` for any workflow with a branch-push or PR step (`changesets/action`, `create-pull-request`, `gh pr create`, `git push`) that uses `secrets.GITHUB_TOKEN` and no `create-github-app-token` step. Confirm on the PR head: `gh api repos/O/R/commits/<sha>/check-runs --jq .total_count` returns 0.
+
+Manual approval, only with the owner's word each time. List the held runs with `gh api "repos/O/R/actions/runs?status=action_required" --jq '.workflow_runs[] | {id, name, head_sha}'`. Then approve each: `gh api -X POST repos/O/R/actions/runs/<id>/approve`. The owner chose this for now.
+
+Durable fix: mint a GitHub App installation token with `actions/create-github-app-token` and pass it to `changesets/action` (and its checkout) as `GITHUB_TOKEN`. Pushes by an App trigger CI normally. The script warns until the workflow stops using `GITHUB_TOKEN` for that push.
