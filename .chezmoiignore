@@ -29,3 +29,6 @@ Brewfile
 # Cursor skills — installed by npx skills add, not chezmoi
 .cursor/skills
 
+
+# Test runs write bytecode into the source tree
+.claude/skills/*/scripts/__pycache__

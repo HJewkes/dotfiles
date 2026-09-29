@@ -1,3 +1,4 @@
 # Claude Code runtime artifacts created while working in this repo.
 # Not dotfile content — chezmoi ignores dot-prefixed dirs in the source tree.
 /.claude/
+__pycache__/

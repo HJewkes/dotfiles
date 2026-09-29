@@ -2,7 +2,9 @@
 
 import importlib.machinery
 import importlib.util
+import io
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -55,6 +57,18 @@ class ConformanceTest(unittest.TestCase):
         self.assertFalse(rr.conformance("HJewkes/x", {"ci.yml": ci})[0])
 
 
+class NeedsCoverageTest(unittest.TestCase):
+    def test_check_job_that_skips_a_job_does_not_conform(self):
+        ci = CONFORMING_CI.replace("  check:", "  extra:\n    runs-on: ubuntu-latest\n  check:")
+        conforms, reason = rr.conformance("HJewkes/x", {"ci.yml": ci})
+        self.assertFalse(conforms)
+        self.assertIn("does not need: extra", reason)
+
+    def test_needs_given_as_a_string_is_accepted(self):
+        ci = CONFORMING_CI.replace("needs: [std]", "needs: std")
+        self.assertTrue(rr.conformance("HJewkes/x", {"ci.yml": ci})[0])
+
+
 class SelectChecksTest(unittest.TestCase):
     def test_conforming_repo_requires_only_pinned_check_without_discovery(self):
         with mock.patch.object(rr, "discover_checks") as discover:
@@ -75,6 +89,19 @@ class SelectChecksTest(unittest.TestCase):
         override = {"required_checks": ["test"]}
         checks = rr.select_checks("HJewkes/x", "main", override, {"ci.yml": CONFORMING_CI})
         self.assertEqual(rr.required_contexts(checks), [{"context": "test"}])
+
+    def test_override_keeps_the_pin_on_check(self):
+        override = {"required_checks": ["check", "test"]}
+        checks = rr.select_checks("HJewkes/x", "main", override, {"ci.yml": CONFORMING_CI})
+        self.assertEqual(
+            rr.required_contexts(checks),
+            [{"context": "check", "integration_id": 15368}, {"context": "test"}],
+        )
+
+    def test_override_on_a_conforming_repo_is_flagged(self):
+        override = {"required_checks": ["test"]}
+        checks = rr.select_checks("HJewkes/x", "main", override, {"ci.yml": CONFORMING_CI})
+        self.assertTrue(checks["override_conforms"])
 
     def test_desired_ruleset_carries_the_pin(self):
         desired = rr.build_desired({"required": ["check"], "standard": True}, {})
@@ -113,11 +140,8 @@ class StandardProblemsTest(unittest.TestCase):
         def fake_gh_json(path, jq):
             return runs_by_sha[path.split("/commits/")[1].split("/")[0]]
 
-        with (
-            mock.patch.object(rr, "merged_prs", return_value=prs),
-            mock.patch.object(rr, "gh_json", side_effect=fake_gh_json),
-        ):
-            return rr.standard_problems("HJewkes/x", "main", workflows)
+        with mock.patch.object(rr, "gh_json", side_effect=fake_gh_json):
+            return rr.standard_problems("HJewkes/x", prs, workflows)
 
     def test_clean_repo_has_no_problems(self):
         ran = [{"status": "completed", "app": 15368}]
@@ -138,11 +162,36 @@ class StandardProblemsTest(unittest.TestCase):
             ],
         )
 
+    def test_second_check_job_inside_ci_yml_is_reported(self):
+        ci = CONFORMING_CI.replace("  std:", "  lint:\n    name: check\n    runs-on: x\n  std:")
+        ci = ci.replace("needs: [std]", "needs: [std, lint]")
+        ran = [{"status": "completed", "app": 15368}]
+        problems = self.problems({"ci.yml": ci}, {"a": ran, "b": ran})
+        self.assertEqual(problems, ["ci.yml has a second job named `check`"])
+
     def test_in_progress_check_does_not_count_as_concluded(self):
         pending = [{"status": "in_progress", "app": 15368}]
         ran = [{"status": "completed", "app": 15368}]
         problems = self.problems({"ci.yml": CONFORMING_CI}, {"a": pending, "b": ran})
         self.assertEqual(problems, ["merged PR #7 has no completed `check` from GitHub Actions"])
+
+
+class StandardNotesTest(unittest.TestCase):
+    def notes(self, plan):
+        out = io.StringIO()
+        with redirect_stdout(out):
+            rr.print_standard_notes(plan)
+        return out.getvalue()
+
+    def test_zero_sampled_prs_is_stated(self):
+        self.assertIn("0 merged PRs sampled", self.notes({"checks": {}, "sampled_prs": []}))
+
+    def test_sampled_prs_print_nothing(self):
+        self.assertEqual(self.notes({"checks": {}, "sampled_prs": [{"number": 1}]}), "")
+
+    def test_override_on_a_conforming_repo_prints_a_warning(self):
+        plan = {"checks": {"override_conforms": True}, "sampled_prs": [{"number": 1}]}
+        self.assertIn("WARNING", self.notes(plan))
 
 
 class BotTokenWarningTest(unittest.TestCase):
