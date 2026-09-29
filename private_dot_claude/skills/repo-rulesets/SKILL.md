@@ -18,7 +18,7 @@ Two rulesets on `~DEFAULT_BRANCH`. Bodies live in `templates/`, copied from the 
 
 | Ruleset | Rules | Bypass |
 |---|---|---|
-| `no-direct-push` | deletion, non_fast_forward, pull_request (0 approvals), required_status_checks (the repo's real CI job names) | none |
+| `no-direct-push` | deletion, non_fast_forward, pull_request (0 approvals), required_status_checks (`check` pinned to GitHub Actions on the HJewkes/ci standard; the repo's real CI job names otherwise) | none |
 | `outside-approval` | pull_request: 1 approval, dismiss_stale_reviews_on_push, require_last_push_approval | Repository admin (actor_id 5), `bypass_mode: pull_request` |
 
 Why each piece exists:
@@ -26,6 +26,7 @@ Why each piece exists:
 - **No bypass on `no-direct-push`** enforces rule 2. Any bypass here would let an agent push to main.
 - **pull_request with 0 approvals** forces every change through a PR without waiting on the owner (rules 1 and 2).
 - **required_status_checks** is the "CI is green" half of rule 1. The names must be checks that run on every PR. A name that never reports on a PR blocks every merge.
+- **`integration_id` 15368** pins `check` to the GitHub Actions app (owner decision 2026-09-28). A commit status, or another app that posts a check named `check`, cannot satisfy the ruleset.
 - **deletion and non_fast_forward** stop anyone deleting or rewriting the default branch.
 - **`outside-approval`** enforces rule 3. `last_push_approval` and dismissing stale reviews stop a third party from pushing new code after the owner approves.
 - **The admin `pull_request` bypass** lets the owner merge their own PRs without an approval, which nobody could give them. `pull_request` mode covers PR merges only, never a direct push.
@@ -38,8 +39,9 @@ Private repos on the free plan cannot have rulesets or classic protection. The A
 
 ## When to run
 
-- **Every new repo**, after its first PR has merged with CI. Discovery needs a merged PR to see which checks run on PRs.
-- **Any time CI job names change**: renamed jobs, new matrix entries, or workflows that were split or merged. Stale names block merges; missing names let red PRs through.
+- **Every new repo.** A repo on the HJewkes/ci standard is protectable from its first commit. A legacy repo needs its first PR merged with CI, because discovery needs a merged PR to see which checks run on PRs.
+- **When a repo first adopts the standard**, so its required checks shrink to the pinned `check`. After that, job renames, new matrix legs and split workflows sit behind `check` and never touch a ruleset.
+- **Legacy repos only: any time CI job names change.** Stale names block merges; missing names let red PRs through.
 - **Periodically**, with `audit --all`, to catch drift and legacy protection.
 
 ## The script
@@ -53,15 +55,21 @@ scripts/repo-rulesets apply <owner/repo>|--all [--yes]
 
 The owner runs `apply --yes` from their own session. Agents run `audit` and dry-run `apply` only.
 
-Required checks are the check-run names on the default-branch HEAD that also ran, and were not skipped, on each of the 3 most recent merged PRs. That drops push-only jobs such as deploy and release, and path-filtered jobs. When no merged PR exists, or nothing overlaps, the repo is flagged "not discoverable". Pin the names in an override after reading the workflow triggers.
+A repo is on the **HJewkes/ci standard** when `.github/workflows/ci.yml` on the default branch has a job `check` whose steps use `HJewkes/ci/actions/all-green` (HJewkes/ci itself uses `./actions/all-green`). Its required checks are exactly `[{"context": "check", "integration_id": 15368}]`, with no discovery. `check` is the aggregator: it `needs` every other job in ci.yml.
+
+For legacy repos, required checks are the check-run names on the default-branch HEAD that also ran, and were not skipped, on each of the 3 most recent merged PRs. That drops push-only jobs such as deploy and release, and path-filtered jobs. When no merged PR exists, or nothing overlaps, the repo is flagged "not discoverable". Pin the names in an override after reading the workflow triggers.
 
 `audit` also reports:
 
+- **Legacy names**: a repo not on the standard prints `LEGACY NAMES` with the reason, and keeps discovery until it migrates.
+- **Standard rules**, for repos on the standard, printed as `STANDARD:` lines. Each one counts against the verdict. ci.yml's `pull_request` trigger has no `paths`, `paths-ignore`, `branches` or `branches-ignore` filter, since a filtered-out workflow never creates `check` and the PR blocks forever. No other workflow has a job named `check`. `check` completed, from GitHub Actions, on each of the 3 most recent merged PRs.
 - **Legacy protection**: any other active ruleset on the default branch, and classic branch protection, with what each enforces. Remove it by hand once the standard pair is live. The script never deletes it.
 - **Direct pushes**: how many of the last N default-branch commits have no merged PR, by author.
 - **Workflows with a push step**, such as release bots that commit version bumps to main. `no-direct-push` has no bypass, so these break and must move to a PR-based release.
 
 - **Bot-token warning**: a workflow that pushes a branch or opens a PR with `secrets.GITHUB_TOKEN` and no App token. It is a warning only. It also prints in dry-run `apply` and never blocks. See the gotcha below.
+
+Tests are offline: `python3 -m unittest discover -s scripts` in the chezmoi source dir. They are not deployed. The script needs PyYAML to read workflows.
 
 Only `gh api` REST calls are used. GraphQL is rate-limited on this account. Filtering happens with `--jq` inside gh.
 
@@ -72,7 +80,7 @@ Only `gh api` REST calls are used. GraphQL is rate-limited on this account. Filt
 | Key | Effect |
 |---|---|
 | `hold` | Audit and dry-run still report. `apply --yes` skips the repo. |
-| `required_checks` | Replaces discovery with this list. |
+| `required_checks` | Replaces both the standard `check` and discovery with this list, unpinned. |
 | `rule_parameters.<ruleset>.<rule type>` | Merged into that rule's parameters. |
 | `reason` | Free text shown in the audit. |
 

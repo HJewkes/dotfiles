@@ -23,6 +23,9 @@ Brewfile
 .claude/*.json
 !.claude/settings.json
 
+# Skill script tests run from the source tree only
+.claude/skills/*/scripts/test_*.py
+
 # Cursor skills — installed by npx skills add, not chezmoi
 .cursor/skills
 

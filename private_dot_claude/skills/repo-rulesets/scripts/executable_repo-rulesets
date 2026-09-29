@@ -10,6 +10,8 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+import yaml
+
 SKILL_DIR = Path(__file__).resolve().parent.parent
 RULESET_NAMES = ("no-direct-push", "outside-approval")
 COMPARED_FIELDS = ("name", "target", "enforcement", "conditions", "bypass_actors", "rules")
@@ -21,11 +23,18 @@ BRANCH_OR_PR_STEP = re.compile(
 BOT_TOKEN = re.compile(r"secrets\.GITHUB_TOKEN|github\.token")
 APP_TOKEN = re.compile(r"create-github-app-token|github-app-token")
 TOKEN_TASK = "TP-447"
+STANDARD_CHECK = "check"
+GITHUB_ACTIONS_APP_ID = 15368
+STANDARD_REPO = "HJewkes/ci"
+ALL_GREEN = re.compile(r"^HJewkes/ci/actions/all-green(@|$)")
+LOCAL_ALL_GREEN = "./actions/all-green"
+TRIGGER_FILTERS = ("paths", "paths-ignore", "branches", "branches-ignore")
 
 USAGE = """repo-rulesets audit <owner/repo>|--all [--commits N]
 repo-rulesets apply <owner/repo>|--all [--yes]
 
-audit   Report current rulesets, legacy protection, discovered CI checks, direct pushes.
+audit   Report current rulesets, legacy protection, required checks (the pinned `check`
+        on the HJewkes/ci standard, discovered names otherwise), direct pushes.
 apply   Print the exact JSON diff per ruleset. Changes nothing unless --yes is given.
         With --yes, held, private and check-less repos are skipped.
 
@@ -86,15 +95,56 @@ def check_names(repo, sha, skip_skipped=False):
     )
 
 
-def merged_pr_heads(repo, branch):
+def merged_prs(repo, branch):
     path = f"repos/{repo}/pulls?state=closed&base={branch}&sort=updated&direction=desc&per_page=30"
-    return gh_json(path, f"[.[] | select(.merged_at) | .head.sha][:{PR_SAMPLE}]") or []
+    jq = f"[.[] | select(.merged_at) | {{number, sha: .head.sha}}][:{PR_SAMPLE}]"
+    return gh_json(path, jq) or []
 
 
-def discover_checks(repo, branch, override):
-    """Required = HEAD check names that actually ran (not skipped) on every sampled merged PR."""
+def merged_pr_heads(repo, branch):
+    return [pr["sha"] for pr in merged_prs(repo, branch)]
+
+
+def parse_workflow(text):
+    try:
+        parsed = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def uses_all_green(step, repo):
+    uses = (step or {}).get("uses") or ""
+    return bool(ALL_GREEN.match(uses)) or (repo == STANDARD_REPO and uses == LOCAL_ALL_GREEN)
+
+
+def conformance(repo, workflows):
+    """Returns (conforms, reason): ci.yml has a job `check` whose steps use all-green."""
+    if "ci.yml" not in workflows:
+        return False, "no .github/workflows/ci.yml"
+    ci = parse_workflow(workflows["ci.yml"])
+    if ci is None:
+        return False, "ci.yml does not parse as a YAML mapping"
+    job = (ci.get("jobs") or {}).get(STANDARD_CHECK)
+    if not isinstance(job, dict):
+        return False, f"ci.yml has no job `{STANDARD_CHECK}`"
+    if not any(uses_all_green(step, repo) for step in job.get("steps") or []):
+        return False, f"ci.yml job `{STANDARD_CHECK}` does not use HJewkes/ci/actions/all-green"
+    return True, None
+
+
+def select_checks(repo, branch, override, workflows):
+    """Override wins, then the HJewkes/ci standard, then legacy discovery."""
     if "required_checks" in override:
         return {"required": override["required_checks"], "source": "override"}
+    conforms, reason = conformance(repo, workflows)
+    if conforms:
+        return {"required": [STANDARD_CHECK], "standard": True, "source": "HJewkes/ci standard"}
+    return {**discover_checks(repo, branch), "legacy": reason}
+
+
+def discover_checks(repo, branch):
+    """Required = HEAD check names that actually ran (not skipped) on every sampled merged PR."""
     head = check_names(repo, branch)
     if not head:
         return {"required": None, "problem": "no check runs on the default-branch HEAD"}
@@ -118,6 +168,12 @@ def discover_checks(repo, branch, override):
     return result
 
 
+def required_contexts(checks):
+    if checks.get("standard"):
+        return [{"context": STANDARD_CHECK, "integration_id": GITHUB_ACTIONS_APP_ID}]
+    return [{"context": c} for c in checks["required"]]
+
+
 def build_desired(checks, override):
     desired = {}
     for name in RULESET_NAMES:
@@ -125,7 +181,7 @@ def build_desired(checks, override):
         patches = override.get("rule_parameters", {}).get(name, {})
         for rule in ruleset["rules"]:
             if rule["type"] == "required_status_checks":
-                rule["parameters"]["required_status_checks"] = [{"context": c} for c in checks]
+                rule["parameters"]["required_status_checks"] = required_contexts(checks)
             rule.get("parameters", {}).update(patches.get(rule["type"], {}))
         desired[name] = ruleset
     return desired
@@ -170,7 +226,10 @@ def describe_rule(rule):
             + ")"
         )
     if rule["type"] == "required_status_checks":
-        names = ",".join(c["context"] for c in params.get("required_status_checks", []))
+        names = ",".join(
+            c["context"] + (f"@{c['integration_id']}" if c.get("integration_id") else "")
+            for c in params.get("required_status_checks", [])
+        )
         return f"required_status_checks({names})"
     return rule["type"]
 
@@ -250,6 +309,58 @@ def bot_token_workflows(workflows):
     ]
 
 
+def pr_trigger_filters(ci):
+    """Filters on ci.yml's pull_request trigger, or None when there is no such trigger."""
+    triggers = ci.get("on", ci.get(True))  # YAML 1.1 reads a bare `on` key as True
+    if triggers == "pull_request" or (isinstance(triggers, list) and "pull_request" in triggers):
+        return []
+    if not isinstance(triggers, dict) or "pull_request" not in triggers:
+        return None
+    config = triggers["pull_request"] or {}
+    return [key for key in TRIGGER_FILTERS if key in config]
+
+
+def workflow_job_names(parsed):
+    jobs = parsed.get("jobs") or {}
+    return {jid for jid in jobs} | {j.get("name") for j in jobs.values() if isinstance(j, dict)}
+
+
+def other_check_workflows(workflows):
+    return sorted(
+        name
+        for name, text in workflows.items()
+        if name != "ci.yml" and STANDARD_CHECK in workflow_job_names(parse_workflow(text) or {})
+    )
+
+
+def pr_missing_check(repo, pr):
+    runs = gh_json(
+        f"repos/{repo}/commits/{pr['sha']}/check-runs?check_name={STANDARD_CHECK}&per_page=100",
+        "[.check_runs[] | {status, app: .app.id}]",
+    )
+    return not any(
+        r["status"] == "completed" and r["app"] == GITHUB_ACTIONS_APP_ID for r in runs or []
+    )
+
+
+def standard_problems(repo, branch, workflows):
+    """Section 7.4 audit rules for a repo on the HJewkes/ci standard."""
+    problems = []
+    filters = pr_trigger_filters(parse_workflow(workflows["ci.yml"]))
+    if filters is None:
+        problems.append("ci.yml has no pull_request trigger, so `check` never reports on PRs")
+    elif filters:
+        problems.append(f"ci.yml pull_request trigger is filtered ({', '.join(filters)})")
+    for name in other_check_workflows(workflows):
+        problems.append(f"{name} also has a job named `{STANDARD_CHECK}`")
+    missing = [pr for pr in merged_prs(repo, branch) if pr_missing_check(repo, pr)]
+    for pr in missing:
+        problems.append(
+            f"merged PR #{pr['number']} has no completed `{STANDARD_CHECK}` from GitHub Actions"
+        )
+    return problems
+
+
 def print_bot_token_warnings(plan):
     for name in bot_token_workflows(plan.get("workflows", {})):
         print(
@@ -274,11 +385,13 @@ def plan_repo(repo, overrides):
     }
     if meta["private"]:
         return plan
-    plan["checks"] = discover_checks(repo, plan["branch"], plan["override"])
-    plan["current"], plan["legacy"] = fetch_rulesets(repo, plan["branch"])
     plan["workflows"] = workflow_files(repo, plan["branch"])
+    plan["checks"] = select_checks(repo, plan["branch"], plan["override"], plan["workflows"])
+    plan["current"], plan["legacy"] = fetch_rulesets(repo, plan["branch"])
+    if plan["checks"].get("standard"):
+        plan["standard_problems"] = standard_problems(repo, plan["branch"], plan["workflows"])
     if plan["checks"]["required"]:
-        plan["desired"] = build_desired(plan["checks"]["required"], plan["override"])
+        plan["desired"] = build_desired(plan["checks"], plan["override"])
     return plan
 
 
@@ -301,10 +414,20 @@ def verdict(plan):
     if "desired" not in plan:
         return "blocked: required checks not discoverable"
     statuses = [ruleset_status(plan, n) for n in RULESET_NAMES]
-    return "compliant" if all(s.startswith("compliant") for s in statuses) else "needs apply"
+    base = "compliant" if all(s.startswith("compliant") for s in statuses) else "needs apply"
+    broken = len(plan.get("standard_problems", []))
+    return f"{base}; {broken} standard rule(s) broken" if broken else base
 
 
 def print_checks(checks):
+    if checks.get("standard"):
+        print(
+            f"  checks: {STANDARD_CHECK} pinned to GitHub Actions "
+            f"(integration_id {GITHUB_ACTIONS_APP_ID}) [{checks['source']}]"
+        )
+        return
+    if checks.get("legacy"):
+        print(f"  LEGACY NAMES: not on the HJewkes/ci standard ({checks['legacy']})")
     if checks.get("problem"):
         print(
             f"  checks: NOT DISCOVERABLE ({checks['problem']}); HEAD had {checks.get('head', [])}"
@@ -324,6 +447,8 @@ def print_audit(plan, commit_count):
         print_checks(plan["checks"])
         for name in RULESET_NAMES:
             print(f"  {name}: {ruleset_status(plan, name)}")
+        for problem in plan.get("standard_problems", []):
+            print(f"  STANDARD: {problem}")
         for rs in plan["legacy"]:
             print(f"  LEGACY ruleset: {describe_ruleset(rs)}")
         print_pushes(plan, commit_count)
