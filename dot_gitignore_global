@@ -3,3 +3,6 @@
 *.swp
 
 **/.claude/settings.local.json
+
+# Playwright MCP plugin console logs
+.playwright-mcp/
