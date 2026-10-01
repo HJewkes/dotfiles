@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# Resolve the default Claude profile when `claude` launches, not when a shell starts.
+#
+# Installed ahead of ~/.local/bin/claude on PATH (symlinked into /opt/homebrew/bin).
+# A shell-startup export only reaches shells opened after it changed, so terminal
+# tabs and daemons that were already running kept launching on the old account.
+# Reading the baseline here applies it to every launch path at once: typed
+# `claude`, `aw`, and agent-chat spawns.
+#
+# Precedence, highest first:
+#   1. CLAUDE_CONFIG_DIR already set    — an explicit choice, e.g. aw's brief profile
+#   2. CLAUDE_DEFAULT_PROFILE env var   — per-shell override; "default" means ~/.claude
+#   3. ~/.config/claude/default-profile — the machine-wide baseline, one name per file
+#   4. nothing                          — ~/.claude
+#
+# CLAUDE_SHIM_REAL overrides the binary to exec; it exists so tests can stub it.
+set -u
+
+shim_path() { readlink -f "$0" 2>/dev/null || printf '%s\n' "$0"; }
+
+find_real() {
+  if [[ -n "${CLAUDE_SHIM_REAL:-}" ]]; then printf '%s\n' "$CLAUDE_SHIM_REAL"; return; fi
+  if [[ -x "$HOME/.local/bin/claude" ]]; then printf '%s\n' "$HOME/.local/bin/claude"; return; fi
+  local self dir candidate
+  self=$(shim_path)
+  IFS=: read -ra dirs <<< "$PATH"
+  for dir in "${dirs[@]}"; do
+    candidate="$dir/claude"
+    [[ -x "$candidate" ]] || continue
+    [[ "$(readlink -f "$candidate" 2>/dev/null)" == "$self" ]] && continue
+    printf '%s\n' "$candidate"; return
+  done
+  return 1
+}
+
+resolve_profile() {
+  if [[ -n "${CLAUDE_DEFAULT_PROFILE+x}" ]]; then
+    printf '%s\n' "$CLAUDE_DEFAULT_PROFILE"; return
+  fi
+  local file="${XDG_CONFIG_HOME:-$HOME/.config}/claude/default-profile"
+  [[ -r "$file" ]] && head -n1 "$file" | tr -d '[:space:]'
+}
+
+apply_baseline() {
+  [[ -n "${CLAUDE_CONFIG_DIR:-}" ]] && return
+  local profile dir
+  profile=$(resolve_profile)
+  case "$profile" in ""|default) return ;; esac
+
+  # Joined onto the profile root, so it must stay a bare directory name.
+  if [[ ! "$profile" =~ ^[A-Za-z0-9._-]+$ || "$profile" == "." || "$profile" == ".." ]]; then
+    printf 'claude-shim: ignoring invalid default profile %q; using ~/.claude\n' "$profile" >&2
+    return
+  fi
+  dir="${CLAUDE_PROFILE_ROOT:-$HOME/.claude-profiles}/$profile"
+  if [[ ! -d "$dir" ]]; then
+    printf 'claude-shim: default profile "%s" not found at %s; using ~/.claude\n' "$profile" "$dir" >&2
+    return
+  fi
+  export CLAUDE_CONFIG_DIR="$dir"
+}
+
+real=$(find_real) || { echo "claude-shim: no real claude binary found on PATH" >&2; exit 127; }
+apply_baseline
+exec "$real" "$@"
