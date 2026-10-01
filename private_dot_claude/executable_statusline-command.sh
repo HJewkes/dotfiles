@@ -47,6 +47,12 @@ ICON_FOLDER=$(printf '\uf07b')
 # ── Read stdin ──────────────────────────────────────────────
 input=$(cat)
 
+# agent-chat: publish this session's context/rate-limit figures for session_budget.
+# Guarded on the writer being installed, so removing the script disables this.
+if [[ -x "$HOME/.claude/scripts/session-budget-write.sh" ]]; then
+    printf '%s' "$input" | "$HOME/.claude/scripts/session-budget-write.sh" >/dev/null 2>&1
+fi
+
 # ── Parse all JSON fields in a single jq call ───────────────
 read -r model_id used_pct cache_read cache_create ctx_size duration_ms lines_add lines_rm exceeds_200k session_id <<< \
   $(echo "$input" | jq -r '[

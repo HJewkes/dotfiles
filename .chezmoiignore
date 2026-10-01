@@ -2,6 +2,10 @@ README.md
 LICENSE.md
 Brewfile
 
+# Repo documentation, not home-directory content
+docs
+docs/**
+
 
 # Claude Code runtime directories — not managed by chezmoi
 .claude/cache
