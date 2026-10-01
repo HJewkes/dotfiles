@@ -2,6 +2,10 @@ README.md
 LICENSE.md
 Brewfile
 
+# Repo documentation, not home-directory content
+docs
+docs/**
+
 
 # Claude Code runtime directories — not managed by chezmoi
 .claude/cache
@@ -23,6 +27,12 @@ Brewfile
 .claude/*.json
 !.claude/settings.json
 
+# Skill script tests run from the source tree only
+.claude/skills/*/scripts/test_*.py
+
 # Cursor skills — installed by npx skills add, not chezmoi
 .cursor/skills
 
+
+# Test runs write bytecode into the source tree
+.claude/skills/*/scripts/__pycache__

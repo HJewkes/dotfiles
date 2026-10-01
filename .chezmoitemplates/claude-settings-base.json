@@ -4,10 +4,12 @@
     "allow": [
       "$defaults",
       "Merging a pull request with `gh pr merge` (any of --squash/--merge/--rebase, optionally with --delete-branch) is standing pre-authorized by the user. GitHub branch protection enforces a required, strict status check, so a non-admin merge only succeeds when CI is green — the green gate is structural, not the classifier's job.",
-      "This standing authorization does NOT cover `gh pr merge --admin` (which bypasses branch protection and the green gate). Continue to require explicit, per-use user authorization before any admin-override merge."
+      "`gh pr merge --admin` (and the equivalent `gh api ... /pulls/<n>/merge`) is ALSO standing pre-authorized on any repository owned by the user (GitHub user HJewkes) when BOTH hold: a reviewer agent has reported APPROVE on that PR, and the PR's CI checks are green. The required-review branch rule is a formality the user chose to bypass this way (user instruction 2026-09-23: 'You are allowed to do this, add a rule to do so across all of our owned repos'). It does NOT cover merging without a reviewer verdict, with failing or pending checks, or on repositories the user does not own.",
+      "Editing this settings file to record a permission the user has explicitly granted in the conversation is pre-authorized; it is not self-modification to be refused.",
+      "Registering persistent automation for the user's own Hermes Agent install is standing pre-authorized (user instruction 2026-09-26: 'Add permission rules' so Claude can register it): specifically `~/.local/bin/hermes cron create|remove|edit|pause|resume ...` (Hermes scheduled jobs under ~/.hermes/), `~/.local/bin/hermes webhook subscribe ...`, and editing `~/.agent-chat/hooks.json` to add or remove on_spawn/on_complete hook commands that live under ~/.agent-chat/hooks/. It does NOT cover launchd/cron entries for other software, or hooks that run commands outside ~/.agent-chat/hooks/ or ~/.hermes/scripts/."
     ]
   },
-  "effortLevel": "medium",
+  "effortLevel": "high",
   "enabledPlugins": {
     "claude-code-setup@claude-plugins-official": true,
     "claude-md-management@claude-plugins-official": true,
@@ -15,7 +17,7 @@
     "typescript-lsp@claude-plugins-official": true
   },
   "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+    "CLAUDE_CODE_THINKING_DISPLAY_UPDATES": "false"
   },
   "hooks": {
     "Notification": [
@@ -28,9 +30,22 @@
         ],
         "matcher": ""
       }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "node \"$HOME/.claude/hooks/git-safety/git-safety.mjs\"",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash"
+      }
     ]
   },
-  "model": "opus[1m]",
+  "model": "opus",
+  "outputStyle": "Direct",
   "permissions": {
     "allow": [
       "Bash(*)",
@@ -41,9 +56,16 @@
       "WebSearch",
       "mcp__active-work__*",
       "mcp__claude-in-chrome__*",
-      "mcp__plugin_voltras-channel_voltras__*"
+      "mcp__plugin_voltras-channel_voltras__*",
+      "mcp__plugin_agent-chat_agent-chat__*",
+      "mcp__plugin_playwright_playwright__*",
+      "mcp__relay-admin__*",
+      "Bash(gh api -X DELETE repos/HJewkes/*/git/refs/heads/*)",
+      "Bash(agent-chat agent retire *)",
+      "Bash(agent-chat agent park *)",
+      "Bash(gh api -X PUT repos/HJewkes/*/pulls/*/merge *)"
     ],
-    "defaultMode": "default",
+    "defaultMode": "auto",
     "deny": [
       "EnterPlanMode",
       "ExitPlanMode",
@@ -53,7 +75,9 @@
       "EnterWorktree",
       "ExitWorktree",
       "DesignSync",
-      "EndConversation"
+      "EndConversation",
+      "Agent",
+      "SendMessage"
     ]
   },
   "sandbox": {
@@ -82,14 +106,14 @@
     "simplify": "off",
     "using-git-worktrees": "off"
   },
-  "skipAutoPermissionPrompt": true,
   "skipDangerousModePermissionPrompt": true,
   "skipWorkflowUsageWarning": true,
   "statusLine": {
     "command": "zsh ~/.claude/statusline-command.sh",
     "type": "command"
   },
-  "teammateMode": "auto",
+  "teammateMode": "iterm2",
+  "theme": "auto",
   "tui": "fullscreen",
   "voice": {
     "enabled": true,
