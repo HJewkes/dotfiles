@@ -25,25 +25,54 @@ have their own Claude account. Verified with `claude auth status` per profile:
 The two new addresses come from Cloudflare Email Routing on `henryjewkes.com`.
 See `henryjewkes-com-cloudflare-migration.md`.
 
-### Baseline profile for new shells (short-term, 2026-09-15)
+### Baseline profile (short-term, from 2026-09-15)
 
-`dot_zsh/claude.zsh` exports `CLAUDE_CONFIG_DIR` for the `agents` profile in
-every new shell, because the default account hit 100% of its weekly limit
-(resets Sat 19 Sep 18:00 MDT) while `agents` sat at 1%.
+New Claude sessions default to the `agents` account, because the default account
+hit 100% of its weekly limit (resets Sat 19 Sep 18:00 MDT) while `agents` sat at 1%.
+
+The baseline is a file, `~/.config/claude/default-profile`, read by a `claude`
+shim at launch. The shim lives at `~/.local/libexec/claude-shim/claude` and is
+symlinked to `/opt/homebrew/bin/claude`, which precedes the real
+`~/.local/bin/claude` on PATH.
 
 Precedence, highest first:
 
-1. A `CLAUDE_CONFIG_DIR` already in the environment — `aw` and agent-chat set
-   this for an initiative's declared `profile`, and it survives the shell they
-   launch into.
-2. `CLAUDE_DEFAULT_PROFILE`, defaulting to `agents`.
-3. `~/.claude`, when `CLAUDE_DEFAULT_PROFILE` is `default` or empty.
+1. `CLAUDE_CONFIG_DIR` already set — `aw` sets it from an initiative's brief.
+2. `CLAUDE_DEFAULT_PROFILE` in the environment; `default` means `~/.claude`.
+3. The baseline file.
+4. `~/.claude`.
 
-So an initiative that declares a profile still gets it, and one that declares
-none now runs on `agents` rather than the default account.
+Commands:
 
-To revert, set `CLAUDE_DEFAULT_PROFILE=default` for one shell, or change the
-default in `dot_zsh/claude.zsh` to make it permanent.
+```bash
+claude-profile                    # effective profile for this shell
+claude-profile baseline           # show the machine-wide baseline
+claude-profile baseline default   # revert after the weekly reset
+claude-profile default            # pin just this shell to ~/.claude
+```
+
+#### Why a shim and not a shell export
+
+The first version exported `CLAUDE_CONFIG_DIR` from `claude.zsh`. That only
+reached shells started after the change. Six of nine open terminal tabs predated
+it, so `aw fantasy-football` (no declared profile) and typed `claude` kept landing
+on the exhausted default account. Reading the file at launch applies a change to
+every launch path at once, and reverting is a one-line edit rather than a round of
+restarting terminals.
+
+#### Caveats
+
+- **zsh command hashing.** A tab that ran `claude` before the shim existed has
+  `~/.local/bin/claude` hashed and bypasses the shim. Run `rehash` once in such a
+  tab. `aw` is unaffected, since Node does a fresh PATH lookup.
+- **Tabs started under the first version** still export
+  `CLAUDE_CONFIG_DIR=…/agents`. That wins over the file, so they will stay on
+  `agents` after the baseline is reverted, until refreshed or
+  `claude-profile default` is run.
+- **`claude auth login` also passes through the shim.** Pin the intended profile
+  first, or it binds whichever account the baseline selects.
+- `claude doctor` reports a native install, auto-updates enabled, and no issues
+  with the shim in place.
 
 ### Binding gotcha: the browser session wins, not `--email`
 

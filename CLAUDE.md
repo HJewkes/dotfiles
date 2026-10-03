@@ -33,9 +33,13 @@ messaging, and "fork me" requests now go through the **agent-orchestration skill
 (CC-44). Full rationale and exact unwind instructions live in
 `~/projects/agent-chat/docs/replacing-built-in-agent-dispatch.md`.
 
-Worktree isolation is per-machine budget-capped (3 concurrent as of 2026-08) -- check
-`agent_list` / `git worktree list` before spawning a worktree-isolated agent, and don't
-free up a worktree that backs an open PR just to make room.
+Worktrees are a disposable copy of a branch, not a unit of work (CC-276). Only active trees
+count: a live agent's cwd or a fix round, up to the seat's implementer cap. Once a PR is
+pushed with green CI, park its tree: remove the checkout and keep the branch; `agent-chat
+agent resume` re-creates it for a fix round. Never park a tree a live agent's cwd points at,
+and never delete a branch. `worktreeBudget` (12 per repo, `~/.agent-chat/config.json`) is a
+backstop with 2 slots kept for the owner. agent-chat and Shepherd are taking this over; when
+they have, this paragraph shrinks to a pointer.
 
 Spawned agents get **isolated context by construction**. They never inherit session
 history -- you construct exactly what they need in the `brief`. This keeps them focused
@@ -72,10 +76,18 @@ and preserves your context for coordination work.
 
 ## Turn Endings
 
-Every turn that ends without a pending tool result must end with
-`AskUserQuestion` -- either a clarifying question needed to proceed, or a
-proposal of next steps for me to approve/redirect. Never end a turn on a bare
-summary or status update alone.
+In a session I am attached to, end each turn with a short proposal of next
+steps. Use `AskUserQuestion` only when the decision is genuinely mine (taste,
+money, external accounts, irreversible actions, or materially different
+readings of the request); otherwise state the assumption and proceed. Never
+end a turn on a bare status update with no proposed next step.
+
+Spawned agents have no `AskUserQuestion`. They end with a `chat_send` report to
+their spawner in the return contract of the agent-orchestration skill.
+
+(Amended 2026-09-26: the old rule forced a blocking question on every turn.
+Session forensics put those at 64% of agent stalls and about $326/week in
+cold-cache answers; see claude-channels/sources/surplus-2026-09-26.)
 
 ## Harness Commands
 
