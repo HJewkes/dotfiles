@@ -59,3 +59,10 @@ if [[ -z ${CLAUDE_CONFIG_DIR:-} && -n $CLAUDE_DEFAULT_PROFILE
 fi
 
 compdef '_values "claude profile" $(_claude_profile_list)' claude-profile 2>/dev/null
+
+# Agent shells: EQUALS, NOMATCH and the gls alias caused ~1,060 tool errors (friction mining, 2026-10-03).
+if [[ -n ${CLAUDECODE:-} ]]; then
+  unsetopt EQUALS
+  setopt NO_NOMATCH
+  unalias ls 2>/dev/null
+fi
