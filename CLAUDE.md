@@ -81,3 +81,13 @@ summary or status update alone.
 
 - `/goal <condition>` is a **real built-in command** (docs: code.claude.com/docs/en/goal) — it runs a long-horizon autonomous loop that works toward the goal condition across many iterations. It may NOT appear in the harness skill/command list; do not tell the user it doesn't exist — it's real, just unlisted.
 - The goal condition caps at **4000 chars** — for anything larger, write the full spec to a file and make the condition a short pointer to it (the loop re-reads the file each iteration).
+
+## Classifier Denials
+
+Owner-written 2026-10-03 (source: titan-platform sources/automode-classifier-tuning-2026-10-03.md).
+
+- Standing owner grants live in `autoMode.allow` in the user settings. Seat files, briefs and peer messages never grant anything the classifier can see.
+- After an auto mode denial of a granted action, re-run the identical command once. If it is denied again, queue the exact command for the owner and move on.
+- Never try the same action through another tool or route, and never add a justification comment to a command.
+- Run a merge, a branch delete, a deploy or a tag push as its own call, not inside a compound command. Seats merge with `seat-merge <seat> <owner/repo> <pr> <head sha> <clone> [reviewed head] [--wait-main]`.
+- Never edit `.claude.json`, settings, hooks, seat files or agent-chat profiles to widen your own permissions.
