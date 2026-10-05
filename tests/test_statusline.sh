@@ -7,6 +7,7 @@ export STATUSLINE_RATE_LIMITS="$ROOT/private_dot_claude/scripts/executable_rate-
 export STATUSLINE_TEST_WIDTH=200
 FAILS=0
 DEFAULT=$'\uf007' AGENTS=$'\U000f06a9' PERSONAL=$'\uf015' WORKOUT=$'\U000f01e6'
+G_EMPTY=$'\U000f0873' G_LOW=$'\U000f0875' G_MID=$'\U000f029a' G_FULL=$'\U000f0874'
 
 HOME_DIR=$(cd "$(mktemp -d)" && pwd -P)
 trap 'rm -rf "$HOME_DIR"' EXIT
@@ -43,7 +44,7 @@ check() {
 
 write_cache false
 out=$(render '"effort":{"level":"xhigh"},')
-check "shows account and effort next to the model" "$out" "opus 5.5 $AGENTS xhigh" yes
+check "shows account and effort next to the model" "$out" "opus 5.5 $AGENTS $G_FULL" yes
 check "hides other-accounts pill when only one account has data" "$out" "$DEFAULT" no
 
 out=$(render '')
@@ -52,10 +53,26 @@ check "omits effort when stdin has none" "$out" "opus 5.5 $AGENTS ▁▄" yes
 write_cache true
 out=$(render '"effort":{"level":"high"},')
 check "lists other accounts' cached usage" "$out" "$DEFAULT ▁▄" yes
-check "shows age for a stale other account" "$out" "$PERSONAL ▁▄*2h" yes
+check "shows age for a stale other account" "$out" "$PERSONAL ▁▄*2h old" yes
 check "does not repeat the current account among the others" "$out" "$AGENTS*$AGENTS" no
 
 out=$(CLAUDE_CONFIG_DIR="$HOME/.claude-profiles/other" render_with_dir '')
 check "falls back to the short name for an unknown account" "$out" "opus 5.5 other" yes
+
+for pair in low:$G_EMPTY medium:$G_LOW high:$G_MID xhigh:$G_FULL max:$G_FULL; do
+    out=$(render "\"effort\":{\"level\":\"${pair%%:*}\"},")
+    check "maps ${pair%%:*} effort to its gauge glyph" "$out" "$AGENTS ${pair#*:} " yes
+done
+out=$(render '"effort":{"level":"turbo"},')
+check "falls back to text for an unknown effort" "$out" "$AGENTS turbo" yes
+
+raw=$(printf '{"model":{"id":"claude-opus-5-5"},"session_id":"s1","effort":{"level":"max"},"cost":{"total_duration_ms":1000}}' |
+    CLAUDE_CONFIG_DIR="$HOME/.claude-profiles/agents" zsh "$SCRIPT")
+check_raw() {
+    local name="$1" out="$2" literal="$3"
+    if [[ "$out" == *"$literal"* ]]; then echo "ok   $name"; else echo "FAIL $name"; FAILS=$((FAILS + 1)); fi
+}
+check_raw "renders max effort in bold red" "$raw" $'\033[1m\033[38;2;243;139;168m'"$G_FULL"
+check_raw "renders account glyph in dark green on the model pill" "$raw" $'\033[38;2;20;100;45m'"$AGENTS"
 
 exit $((FAILS > 0))
