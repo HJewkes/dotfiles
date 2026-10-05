@@ -7,6 +7,7 @@ export STATUSLINE_RATE_LIMITS="$ROOT/private_dot_claude/scripts/executable_rate-
 export STATUSLINE_TEST_WIDTH=200
 FAILS=0
 DEFAULT=$'\uf007' AGENTS=$'\U000f06a9' PERSONAL=$'\uf015' WORKOUT=$'\U000f01e6'
+CLOCK_1=$'\U000f143f' CLOCK_2=$'\U000f1440' CLOCK_5=$'\U000f1443' CLOCK_12=$'\U000f144a' CLOCK_ALERT=$'\U000f0955'
 G_EMPTY=$'\U000f0873' G_LOW=$'\U000f0875' G_MID=$'\U000f029a' G_FULL=$'\U000f0874'
 
 HOME_DIR=$(cd "$(mktemp -d)" && pwd -P)
@@ -16,12 +17,12 @@ mkdir -p "$HOME/.claude/status-cache" "$HOME/.claude-profiles/agents" "$HOME/.cl
 NOW=$(date +%s)
 
 write_cache() {
-    jq -n --argjson now "$NOW" --arg h "$HOME" --argjson others "$1" '
+    jq -n --argjson now "$NOW" --arg h "$HOME" --argjson others "$1" --argjson personal_age "${PERSONAL_AGE:-7200}" '
         def rec($age): {fetched_at: ($now - $age), five_hour_pct: "10", weekly_pct: "50",
                         five_hour_reset: 0, weekly_reset: 0, scoped_pct: "", scoped_model: "",
                         weekly_sev: "normal", scoped_sev: ""};
         {($h + "/.claude-profiles/agents"): rec(30)}
-        + (if $others then {($h + "/.claude"): rec(30), ($h + "/.claude-profiles/personal"): rec(7200)} else {} end)
+        + (if $others then {($h + "/.claude"): rec(30), ($h + "/.claude-profiles/personal"): rec($personal_age)} else {} end)
     ' > "$HOME/.claude/status-cache/usage.json"
 }
 
@@ -55,7 +56,7 @@ check "omits effort when stdin has none" "$out" "opus 5.5 ▁▁▁▁" yes
 write_cache true
 out=$(render '"effort":{"level":"high"},')
 check "lists other accounts' cached usage" "$out" "$DEFAULT ▁▄" yes
-check "shows age for a stale other account" "$out" "$PERSONAL ▁▄*2h old" yes
+check "shows age for a stale other account" "$out" "$PERSONAL ▁▄ $CLOCK_2 " yes
 check "does not repeat the current account among the others" "$out" "$AGENTS*$AGENTS" no
 
 out=$(CLAUDE_CONFIG_DIR="$HOME/.claude-profiles/other" render_with_dir '')
@@ -77,6 +78,21 @@ check_raw() {
 check_raw "renders max effort in bold red" "$raw" $'\033[1m\033[38;2;243;139;168m'"$G_FULL"
 check_raw "draws the account glyph in the pill text colour" "$raw" $'\033[38;2;40;110;95m '"$AGENTS"
 if [[ "$raw" == *$'\033[38;2;20;100;45m'* ]]; then echo "FAIL leaves no green glyph colour"; FAILS=$((FAILS + 1)); else echo "ok   leaves no green glyph colour"; fi
+
+# The stale marker is a clock whose hand shows the age in hours, from 1h up.
+for pair in 3540:none 3600:$CLOCK_1 18000:$CLOCK_5 46800:$CLOCK_ALERT 259200:$CLOCK_ALERT 43200:$CLOCK_12; do
+    age=${pair%%:*} want=${pair#*:}
+    PERSONAL_AGE=$age write_cache true
+    out=$(render '')
+    if [[ "$want" == none ]]; then
+        PERSONAL_AGE=60 write_cache true
+        fresh=$(render '')
+        if [[ "$out" == "$fresh" ]]; then echo "ok   shows no stale marker at ${age}s"; else echo "FAIL shows no stale marker at ${age}s"; echo "     $out"; FAILS=$((FAILS + 1)); fi
+    else
+        check "shows the clock for ${age}s" "$out" "$PERSONAL ▁▄ $want" yes
+    fi
+done
+write_cache true
 
 # Merged logins: default and personal share one account id (a made-up value).
 # Like the live files, the fixtures have no trailing newline.

@@ -465,7 +465,7 @@ fi
 
 
 # Pill 3: Rate limit — teal caps
-STALE_AFTER=300
+STALE_AFTER=3600
 
 account_short_name() {
     local base="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
@@ -501,22 +501,20 @@ effort_gauge() {
     esac
 }
 
-# Age in the coarsest useful unit, e.g. 7m, 3h, 2d.
-format_age() {
-    local sec="$1"
-    if ((sec >= 86400)); then echo "$((sec / 86400))d"
-    elif ((sec >= 3600)); then echo "$((sec / 3600))h"
-    else echo "$((sec / 60))m"
-    fi
-}
+# Clock faces for 1h..12h, in the pill's own text color.
+CLOCK_HOURS=(f143f f1440 f1441 f1442 f1443 f1444 f1445 f1446 f1447 f1448 f1449 f144a)
+ICON_CLOCK_ALERT=$(printf '\U000f0955')
 
-# " 7m old" when the cached figures are older than STALE_AFTER, else nothing.
-# Restores $2 (the pill's text color) afterwards.
+# " <clock>" when the cached figures are older than STALE_AFTER, else nothing.
+# The hand shows the age in hours; past 12h it is the alert clock.
 stale_age_label() {
-    local age="$1" restore="${2:-$FG_TEAL_DIM}"
+    local age="$1" hours
     [[ "$age" =~ ^[0-9]+$ ]] || return 0
-    ((age > STALE_AFTER)) && printf ' %s%s old%s' "$FG_RED" "$(format_age "$age")" "$restore"
-    return 0
+    ((age < STALE_AFTER)) && return 0
+    hours=$((age / 3600))
+    if ((hours > 12)); then printf ' %s' "$ICON_CLOCK_ALERT"
+    else printf " \\U000${CLOCK_HOURS[hours]}"
+    fi
 }
 
 # One " glyph bars[ age]" cell per other account, for the shared usage pill.
@@ -524,7 +522,7 @@ build_other_cells() {
     local lines="$1" tag name five weekly age sev cells=""
     [[ -z "$lines" ]] && return 0
     while IFS='|' read -r tag name five weekly age sev; do
-        cells+=" $(account_label "$name") $(pct_to_bar "$five")$(pct_to_bar "$weekly")$(stale_age_label "$age" "$FG_TEAL_DIM")"
+        cells+=" $(account_label "$name") $(pct_to_bar "$five")$(pct_to_bar "$weekly")$(stale_age_label "$age")"
     done <<< "$lines"
     printf '%s' "$cells"
 }
