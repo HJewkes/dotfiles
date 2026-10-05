@@ -48,17 +48,20 @@ read_cache() {
     local f identity_files=()
     shopt -s nullglob
     for f in "$HOME/.claude.json" "$CONFIG_DIR/.claude.json" "$HOME"/.claude-profiles/*/.claude.json; do
-        [[ -f "$f" ]] && identity_files+=("$f")
+        # A file listed twice would be read twice and no longer parse.
+        [[ -f "$f" && " ${identity_files[*]} " != *" $f "* ]] && identity_files+=("$f")
     done
     shopt -u nullglob
-    jq -n -r --arg k "$CONFIG_DIR" --arg def "$DEFAULT_DIR" --arg home_id "$HOME/.claude.json" \
+    jq -n -R -r --slurpfile cache "$CACHE_FILE" --arg k "$CONFIG_DIR" --arg def "$DEFAULT_DIR" --arg home_id "$HOME/.claude.json" \
         --argjson now "$(date +%s)" '
         def age: $now - (.fetched_at // 0);
         def name: .key | sub(".*/"; "") | if . == ".claude" then "default" else . end;
         def idfile($dir): if $dir == $def then $home_id else $dir + "/.claude.json" end;
-        input as $cache
-        | (reduce inputs as $i ({}; . + {(input_filename): ($i.oauthAccount.accountUuid // null)})) as $ids
-        | ($cache | to_entries
+        # Identity files are read raw: Claude Code rewrites them often, so one
+        # caught mid-write must only stop that dir from merging.
+        (reduce inputs as $line ({}; .[input_filename] += [$line])
+            | map_values(try (join("\n") | fromjson | .oauthAccount.accountUuid) catch null)) as $ids
+        | ($cache[0] | to_entries
             | map(. + {account: ($ids[idfile(.key)] // .key)})
             | group_by(.account)
             | map({members: ., best: (max_by(.value.fetched_at // 0))})) as $accounts
@@ -82,7 +85,7 @@ read_cache() {
               , (.value | age)
               , (.value.weekly_sev    // "")
               ] | join("|"))
-    ' "$CACHE_FILE" "${identity_files[@]}" 2>/dev/null
+    ' "${identity_files[@]}" 2>/dev/null
 }
 
 # Output contract: the own record (without its tag) first, then the others.

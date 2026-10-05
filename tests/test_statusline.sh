@@ -90,4 +90,11 @@ out=$(CLAUDE_CONFIG_DIR="$HOME/.claude-profiles/personal" render_with_dir '')
 check "treats the merged account as current when any member is the current dir" "$out" "opus 5.5 $PERSONAL ▁▄ │ $AGENTS ▁▄" yes
 check "does not list the current merged account among the others" "$out" "$DEFAULT" no
 
+# A truncated identity file (caught mid-write) must not blank the usage section.
+printf '{"oauthAccount":{"accountUu' > "$HOME/.claude.json"
+out=$(render '"effort":{"level":"high"},')
+check "still shows usage when an identity file is truncated" "$out" "$AGENTS $G_MID ▁▄ │" yes
+check "keeps a dir with a truncated identity file as its own account" "$out" "$DEFAULT ▁▄" yes
+check "keeps the other dir of the shared login too" "$out" "$PERSONAL ▁▄" yes
+
 exit $((FAILS > 0))
