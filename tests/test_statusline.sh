@@ -6,6 +6,7 @@ SCRIPT="$ROOT/private_dot_claude/executable_statusline-command.sh"
 export STATUSLINE_RATE_LIMITS="$ROOT/private_dot_claude/scripts/executable_rate-limits.sh"
 export STATUSLINE_TEST_WIDTH=200
 FAILS=0
+DEFAULT=$'\uf007' AGENTS=$'\U000f06a9' PERSONAL=$'\uf015' WORKOUT=$'\U000f01e6'
 
 HOME_DIR=$(cd "$(mktemp -d)" && pwd -P)
 trap 'rm -rf "$HOME_DIR"' EXIT
@@ -29,6 +30,11 @@ render() {
         CLAUDE_CONFIG_DIR="$HOME/.claude-profiles/agents" zsh "$SCRIPT" | sed $'s/\033\\[[0-9;]*m//g'
 }
 
+render_with_dir() {
+    printf '{"model":{"id":"claude-opus-5-5"},"session_id":"s1","cost":{"total_duration_ms":1000}}' |
+        zsh "$SCRIPT" | sed $'s/\033\\[[0-9;]*m//g'
+}
+
 check() {
     local name="$1" out="$2" pattern="$3" want="$4"
     if [[ "$out" == *${~pattern}* ]]; then got=yes; else got=no; fi
@@ -37,16 +43,19 @@ check() {
 
 write_cache false
 out=$(render '"effort":{"level":"xhigh"},')
-check "shows account and effort next to the model" "$out" "opus 5.5 agents xhigh" yes
-check "hides other-accounts pill when only one account has data" "$out" "default" no
+check "shows account and effort next to the model" "$out" "opus 5.5 $AGENTS xhigh" yes
+check "hides other-accounts pill when only one account has data" "$out" "$DEFAULT" no
 
 out=$(render '')
-check "omits effort when stdin has none" "$out" "opus 5.5 agents ▁▄" yes
+check "omits effort when stdin has none" "$out" "opus 5.5 $AGENTS ▁▄" yes
 
 write_cache true
 out=$(render '"effort":{"level":"high"},')
-check "lists other accounts' cached usage" "$out" "default ▁▄" yes
-check "shows age for a stale other account" "$out" "personal ▁▄*2h" yes
-check "does not repeat the current account among the others" "$out" "agents*agents" no
+check "lists other accounts' cached usage" "$out" "$DEFAULT ▁▄" yes
+check "shows age for a stale other account" "$out" "$PERSONAL ▁▄*2h" yes
+check "does not repeat the current account among the others" "$out" "$AGENTS*$AGENTS" no
+
+out=$(CLAUDE_CONFIG_DIR="$HOME/.claude-profiles/other" render_with_dir '')
+check "falls back to the short name for an unknown account" "$out" "opus 5.5 other" yes
 
 exit $((FAILS > 0))

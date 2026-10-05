@@ -43,6 +43,10 @@ ICON_RROUND=$(printf '\ue0b4')
 ICON_GIT=$(printf '\ue0a0')
 ICON_WARN=$(printf '\uf071')
 ICON_FOLDER=$(printf '\uf07b')
+ICON_ACCT_DEFAULT=$(printf '\uf007')
+ICON_ACCT_AGENTS=$(printf '\U000f06a9')
+ICON_ACCT_PERSONAL=$(printf '\uf015')
+ICON_ACCT_WORKOUT=$(printf '\U000f01e6')
 
 # ── Read stdin ──────────────────────────────────────────────
 input=$(cat)
@@ -468,6 +472,20 @@ account_short_name() {
     echo "$base"
 }
 
+# Account glyph in the account's own color, then restores $2 (the pill's text
+# color). An unknown account falls back to its short name.
+account_label() {
+    local name="$1" restore="$2" icon color
+    case "$name" in
+        default)  icon="$ICON_ACCT_DEFAULT";  color="$FG_BLUE" ;;
+        agents)   icon="$ICON_ACCT_AGENTS";   color="$FG_MAUVE" ;;
+        personal) icon="$ICON_ACCT_PERSONAL"; color="$FG_PEACH" ;;
+        workout)  icon="$ICON_ACCT_WORKOUT";  color="$FG_RED" ;;
+        *) printf '%s' "$name"; return 0 ;;
+    esac
+    printf '%s%s%s' "$color" "$icon" "$restore"
+}
+
 # Age in the coarsest useful unit, e.g. 7m, 3h, 2d.
 format_age() {
     local sec="$1"
@@ -491,7 +509,7 @@ build_others_pill() {
     local lines="$1" tag name five weekly age sev cells=""
     [[ -z "$lines" ]] && return 0
     while IFS='|' read -r tag name five weekly age sev; do
-        cells+=" ${name} $(pct_to_bar "$five")$(pct_to_bar "$weekly")$(stale_age_label "$age" "$FG_SUBTEXT")"
+        cells+=" $(account_label "$name" "$FG_SUBTEXT") $(pct_to_bar "$five")$(pct_to_bar "$weekly")$(stale_age_label "$age" "$FG_SUBTEXT")"
     done <<< "$lines"
     printf ' %s%s%s%s%s %s%s%s%s' "$FG_SURFACE1" "$ICON_LROUND" "$BG_SURFACE1" "$FG_SUBTEXT" "$cells" \
         "$RST" "$FG_SURFACE1" "$ICON_RROUND" "$RST"
@@ -519,7 +537,7 @@ if [[ "$rate_5hr" != "unknown" ]] && (( rate_5hr >= 80 )); then
 fi
 
 account_name=$(account_short_name)
-detail_label="${account_name}${effort:+ ${effort}}"
+detail_label="$(account_label "$account_name" "$FG_TEAL_DIM")${effort:+ ${effort}}"
 stale_label=$(stale_age_label "$rate_age")
 
 pill3=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL}${FG_TEAL_DIM} ${model_icon} ${model_name} ${detail_label} ${bar_5hr}${bar_weekly}${bar_scoped}${rate_pct_display}${stale_label} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
