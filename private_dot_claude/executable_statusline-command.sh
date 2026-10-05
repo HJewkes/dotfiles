@@ -25,7 +25,6 @@ FG_BLUE_DIM="\033[38;2;80;110;180m"
 FG_TEAL_DIM="\033[38;2;40;110;95m"
 FG_FLAMINGO="\033[38;2;242;205;205m"
 FG_FLAMINGO_DIM="\033[38;2;150;110;110m"
-FG_GREEN_DIM="\033[38;2;20;100;45m"
 FG_GREEN="\033[38;2;166;227;161m"
 FG_YELLOW="\033[38;2;249;226;175m"
 FG_PEACH="\033[38;2;250;179;135m"
@@ -464,8 +463,6 @@ else
     esac
 fi
 
-# Pill 2: Context bar — blue bg with dark inset bars
-pill2=" ${FG_BLUE}${ICON_LROUND}${BG_BLUE} ${blue_part}${teal_part}${gray_part} ${pct_color}${pct_int}% ${FG_SURFACE1}${ctx_label} ${RST}${BG_BLUE}${compact_label}${RST}${FG_BLUE}${ICON_RROUND}${RST}"
 
 # Pill 3: Rate limit — teal caps
 STALE_AFTER=300
@@ -477,18 +474,16 @@ account_short_name() {
     echo "$base"
 }
 
-# Account glyph in the account's own color (or $3 when given), then restores $2
-# (the pill's text color). An unknown account falls back to its short name.
+# Account glyph in the pill's own text color. An unknown account falls back to
+# its short name.
 account_label() {
-    local name="$1" restore="$2" icon color override="$3"
-    case "$name" in
-        default)  icon="$ICON_ACCT_DEFAULT";  color="$FG_BLUE" ;;
-        agents)   icon="$ICON_ACCT_AGENTS";   color="$FG_MAUVE" ;;
-        personal) icon="$ICON_ACCT_PERSONAL"; color="$FG_PEACH" ;;
-        workout)  icon="$ICON_ACCT_WORKOUT";  color="$FG_RED" ;;
-        *) printf '%s' "$name"; return 0 ;;
+    case "$1" in
+        default)  printf '%s' "$ICON_ACCT_DEFAULT" ;;
+        agents)   printf '%s' "$ICON_ACCT_AGENTS" ;;
+        personal) printf '%s' "$ICON_ACCT_PERSONAL" ;;
+        workout)  printf '%s' "$ICON_ACCT_WORKOUT" ;;
+        *)        printf '%s' "$1" ;;
     esac
-    printf '%s%s%s' "${override:-$color}" "$icon" "$restore"
 }
 
 # Effort level as a gauge glyph; max is bold red. An unknown level prints as
@@ -529,7 +524,7 @@ build_other_cells() {
     local lines="$1" tag name five weekly age sev cells=""
     [[ -z "$lines" ]] && return 0
     while IFS='|' read -r tag name five weekly age sev; do
-        cells+=" $(account_label "$name" "$FG_TEAL_DIM") $(pct_to_bar "$five")$(pct_to_bar "$weekly")$(stale_age_label "$age" "$FG_TEAL_DIM")"
+        cells+=" $(account_label "$name") $(pct_to_bar "$five")$(pct_to_bar "$weekly")$(stale_age_label "$age" "$FG_TEAL_DIM")"
     done <<< "$lines"
     printf '%s' "$cells"
 }
@@ -556,17 +551,22 @@ if [[ "$rate_5hr" != "unknown" ]] && (( rate_5hr >= 80 )); then
 fi
 
 account_name=$(account_short_name)
-effort_label=$(effort_gauge "$effort" "$FG_TEAL_DIM")
-detail_label="$(account_label "$account_name" "$FG_TEAL_DIM" "$FG_GREEN_DIM")${effort_label:+ ${effort_label}}"
+effort_label=$(effort_gauge "$effort" "$FG_CRUST")
 stale_label=$(stale_age_label "$rate_age")
 
 # The separator marks everything before it as the active account.
 other_cells=$(build_other_cells "$other_rates")
 others_part=""
 [[ -n "$other_cells" ]] && others_part=" ${FG_OVERLAY}│${FG_TEAL_DIM}${other_cells}"
-current_usage="${bar_5hr}${bar_weekly}${bar_scoped}${rate_pct_display}${stale_label}"
+current_usage="$(account_label "$account_name") ${bar_5hr}${bar_weekly}${bar_scoped}${rate_pct_display}${stale_label}"
 
-pill3=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL}${FG_TEAL_DIM} ${model_icon} ${model_name} ${detail_label} ${current_usage}${others_part} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
+# Pill 2: Context bar — blue bg with dark inset bars, led by model and effort
+model_part="${FG_CRUST}${model_icon} ${model_name}${effort_label:+ ${effort_label}} "
+pill2_body="${blue_part}${teal_part}${gray_part} ${pct_color}${pct_int}% ${FG_SURFACE1}${ctx_label} ${RST}${BG_BLUE}${compact_label}${RST}"
+pill2=" ${FG_BLUE}${ICON_LROUND}${BG_BLUE} ${model_part}${pill2_body}${FG_BLUE}${ICON_RROUND}${RST}"
+pill2_no_model=" ${FG_BLUE}${ICON_LROUND}${BG_BLUE} ${pill2_body}${FG_BLUE}${ICON_RROUND}${RST}"
+
+pill3=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL}${FG_TEAL_DIM} ${current_usage}${others_part} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
 
 # Pill 4: Session — combines time + ID
 pill4=" ${FG_FLAMINGO}${ICON_LROUND}${BG_FLAMINGO}${FG_FLAMINGO_DIM} ${session_time} ${FG_CRUST}${session_id} ${RST}${FG_FLAMINGO}${ICON_RROUND}${RST}"
@@ -579,9 +579,6 @@ if [[ -n "$git_repo" && "$git_state" == "ok" ]]; then
 else
     pill1_no_wt="$pill1"
 fi
-
-# Rate pill without model label
-pill3_no_model=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL} ${FG_TEAL_DIM}${current_usage}${others_part} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
 
 # Session pill without time (ID only)
 pill4_no_time=" ${FG_FLAMINGO}${ICON_LROUND}${BG_FLAMINGO}${FG_CRUST} ${session_id} ${RST}${FG_FLAMINGO}${ICON_RROUND}${RST}"
@@ -597,15 +594,15 @@ if (( $(visible_len "$left") > term_width - RIGHT_MARGIN )); then
 fi
 if (( $(visible_len "$left") > term_width - RIGHT_MARGIN )); then
     # Tier 3: drop model label + session time
-    left="${pill1_no_wt}${pill2}${pill3_no_model}${pill4_no_time}${auth_pill}"
+    left="${pill1_no_wt}${pill2_no_model}${pill3}${pill4_no_time}${auth_pill}"
 fi
 if (( $(visible_len "$left") > term_width - RIGHT_MARGIN )); then
     # Tier 4: drop session pill entirely
-    left="${pill1_no_wt}${pill2}${pill3_no_model}${auth_pill}"
+    left="${pill1_no_wt}${pill2_no_model}${pill3}${auth_pill}"
 fi
 if (( $(visible_len "$left") > term_width - RIGHT_MARGIN )); then
     # Tier 5: minimal — git + context bar only
-    left="${pill1_no_wt}${pill2}"
+    left="${pill1_no_wt}${pill2_no_model}"
 fi
 
 # ── BUILD RIGHT PILL ──────────────────────────────────────────

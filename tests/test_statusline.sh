@@ -44,11 +44,13 @@ check() {
 
 write_cache false
 out=$(render '"effort":{"level":"xhigh"},')
-check "shows account and effort next to the model" "$out" "opus 5.5 $AGENTS $G_FULL" yes
+check "shows the effort gauge after the model, ahead of the context bar" "$out" "opus 5.5 $G_FULL ▁▁▁▁" yes
+check "starts the usage section with the current account" "$out" "200k*$AGENTS ▁▄" yes
+check "keeps the model out of the usage section" "$out" "$AGENTS*opus" no
 check "hides other-accounts pill when only one account has data" "$out" "$DEFAULT" no
 
 out=$(render '')
-check "omits effort when stdin has none" "$out" "opus 5.5 $AGENTS ▁▄" yes
+check "omits effort when stdin has none" "$out" "opus 5.5 ▁▁▁▁" yes
 
 write_cache true
 out=$(render '"effort":{"level":"high"},')
@@ -57,14 +59,14 @@ check "shows age for a stale other account" "$out" "$PERSONAL ▁▄*2h old" yes
 check "does not repeat the current account among the others" "$out" "$AGENTS*$AGENTS" no
 
 out=$(CLAUDE_CONFIG_DIR="$HOME/.claude-profiles/other" render_with_dir '')
-check "falls back to the short name for an unknown account" "$out" "opus 5.5 other" yes
+check "falls back to the short name for an unknown account" "$out" "other ▁▄" yes
 
 for pair in low:$G_EMPTY medium:$G_LOW high:$G_MID xhigh:$G_FULL max:$G_FULL; do
     out=$(render "\"effort\":{\"level\":\"${pair%%:*}\"},")
-    check "maps ${pair%%:*} effort to its gauge glyph" "$out" "$AGENTS ${pair#*:} " yes
+    check "maps ${pair%%:*} effort to its gauge glyph" "$out" "opus 5.5 ${pair#*:} ▁" yes
 done
 out=$(render '"effort":{"level":"turbo"},')
-check "falls back to text for an unknown effort" "$out" "$AGENTS turbo" yes
+check "falls back to text for an unknown effort" "$out" "opus 5.5 turbo ▁" yes
 
 raw=$(printf '{"model":{"id":"claude-opus-5-5"},"session_id":"s1","effort":{"level":"max"},"cost":{"total_duration_ms":1000}}' |
     CLAUDE_CONFIG_DIR="$HOME/.claude-profiles/agents" zsh "$SCRIPT")
@@ -73,7 +75,8 @@ check_raw() {
     if [[ "$out" == *"$literal"* ]]; then echo "ok   $name"; else echo "FAIL $name"; FAILS=$((FAILS + 1)); fi
 }
 check_raw "renders max effort in bold red" "$raw" $'\033[1m\033[38;2;243;139;168m'"$G_FULL"
-check_raw "renders account glyph in dark green on the model pill" "$raw" $'\033[38;2;20;100;45m'"$AGENTS"
+check_raw "draws the account glyph in the pill text colour" "$raw" $'\033[38;2;40;110;95m '"$AGENTS"
+if [[ "$raw" == *$'\033[38;2;20;100;45m'* ]]; then echo "FAIL leaves no green glyph colour"; FAILS=$((FAILS + 1)); else echo "ok   leaves no green glyph colour"; fi
 
 # Merged logins: default and personal share one account id (a made-up value).
 # Like the live files, the fixtures have no trailing newline.
@@ -85,16 +88,16 @@ printf '{"oauthAccount":{"accountUuid":"fixture-agents"}}' > "$HOME/.claude-prof
 out=$(render '"effort":{"level":"high"},')
 check "shows a shared login once, from its newest record" "$out" "$DEFAULT ▁▄" yes
 check "drops the older record of a shared login" "$out" "$PERSONAL" no
-check "puts the current account first, then a separator, then the others" "$out" "$AGENTS $G_MID ▁▄ │ $DEFAULT ▁▄" yes
+check "puts the current account first, then a separator, then the others" "$out" "$AGENTS ▁▄ │ $DEFAULT ▁▄" yes
 
 out=$(CLAUDE_CONFIG_DIR="$HOME/.claude-profiles/personal" render_with_dir '')
-check "treats the merged account as current when any member is the current dir" "$out" "opus 5.5 $PERSONAL ▁▄ │ $AGENTS ▁▄" yes
+check "treats the merged account as current when any member is the current dir" "$out" "$PERSONAL ▁▄ │ $AGENTS ▁▄" yes
 check "does not list the current merged account among the others" "$out" "$DEFAULT" no
 
 # A truncated identity file (caught mid-write) must not blank the usage section.
 printf '{"oauthAccount":{"accountUu' > "$HOME/.claude.json"
 out=$(render '"effort":{"level":"high"},')
-check "still shows usage when an identity file is truncated" "$out" "$AGENTS $G_MID ▁▄ │" yes
+check "still shows usage when an identity file is truncated" "$out" "$AGENTS ▁▄ │" yes
 check "keeps a dir with a truncated identity file as its own account" "$out" "$DEFAULT ▁▄" yes
 check "keeps the other dir of the shared login too" "$out" "$PERSONAL ▁▄" yes
 
