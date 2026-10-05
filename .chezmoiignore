@@ -36,3 +36,6 @@ docs/**
 
 # Test runs write bytecode into the source tree
 .claude/skills/*/scripts/__pycache__
+
+# Source-tree tests, never deployed
+tests
