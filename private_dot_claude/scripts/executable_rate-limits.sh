@@ -35,15 +35,38 @@ iso_to_epoch() {
 }
 
 # Emit every cached record in one jq pass: "self|..." for this profile, then
-# "other|NAME|5HR|WEEKLY|AGE|WEEKLY_SEV" per other profile. Ages are seconds
+# "other|NAME|5HR|WEEKLY|AGE|WEEKLY_SEV" per other account. Ages are seconds
 # since the record was fetched. Other profiles are read from cache only; they
 # are refreshed by their own sessions, never from here.
+#
+# Usage is per login, and several config dirs can share one login. Dirs whose
+# identity files carry the same account id collapse into one account, served
+# from the record with the newest fetched_at; if the current dir is a member,
+# that account is "self". The id is only compared in memory, never emitted.
 read_cache() {
     [[ -f "$CACHE_FILE" ]] || return 1
-    jq -r --arg k "$CONFIG_DIR" --argjson now "$(date +%s)" '
+    local f identity_files=()
+    shopt -s nullglob
+    for f in "$HOME/.claude.json" "$CONFIG_DIR/.claude.json" "$HOME"/.claude-profiles/*/.claude.json; do
+        # A file listed twice would be read twice and no longer parse.
+        [[ -f "$f" && " ${identity_files[*]} " != *" $f "* ]] && identity_files+=("$f")
+    done
+    shopt -u nullglob
+    jq -n -R -r --slurpfile cache "$CACHE_FILE" --arg k "$CONFIG_DIR" --arg def "$DEFAULT_DIR" --arg home_id "$HOME/.claude.json" \
+        --argjson now "$(date +%s)" '
         def age: $now - (.fetched_at // 0);
         def name: .key | sub(".*/"; "") | if . == ".claude" then "default" else . end;
-        (.[$k] // empty
+        def idfile($dir): if $dir == $def then $home_id else $dir + "/.claude.json" end;
+        # Identity files are read raw: Claude Code rewrites them often, so one
+        # caught mid-write must only stop that dir from merging.
+        (reduce inputs as $line ({}; .[input_filename] += [$line])
+            | map_values(try (join("\n") | fromjson | .oauthAccount.accountUuid) catch null)) as $ids
+        | ($cache[0] | to_entries
+            | map(. + {account: ($ids[idfile(.key)] // .key)})
+            | group_by(.account)
+            | map({members: ., best: (max_by(.value.fetched_at // 0))})) as $accounts
+        | ($accounts | map(select(any(.members[]; .key == $k)))[0].best // empty
+            | .value
             | ["self"
               , (.five_hour_pct   // "unknown")
               , (.weekly_pct      // "unknown")
@@ -55,14 +78,14 @@ read_cache() {
               , (.scoped_sev      // "")
               , age
               ] | join("|")),
-        (to_entries[] | select(.key != $k)
+          ($accounts[] | select(any(.members[]; .key == $k) | not) | .best
             | [ "other", name
               , (.value.five_hour_pct // "unknown")
               , (.value.weekly_pct    // "unknown")
               , (.value | age)
               , (.value.weekly_sev    // "")
               ] | join("|"))
-    ' "$CACHE_FILE" 2>/dev/null
+    ' "${identity_files[@]}" 2>/dev/null
 }
 
 # Output contract: the own record (without its tag) first, then the others.

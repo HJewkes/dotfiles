@@ -524,15 +524,14 @@ stale_age_label() {
     return 0
 }
 
-# One "name 5hr/weekly bars[ age]" cell per other account, one shared pill.
-build_others_pill() {
+# One " glyph bars[ age]" cell per other account, for the shared usage pill.
+build_other_cells() {
     local lines="$1" tag name five weekly age sev cells=""
     [[ -z "$lines" ]] && return 0
     while IFS='|' read -r tag name five weekly age sev; do
-        cells+=" $(account_label "$name" "$FG_SUBTEXT") $(pct_to_bar "$five")$(pct_to_bar "$weekly")$(stale_age_label "$age" "$FG_SUBTEXT")"
+        cells+=" $(account_label "$name" "$FG_TEAL_DIM") $(pct_to_bar "$five")$(pct_to_bar "$weekly")$(stale_age_label "$age" "$FG_TEAL_DIM")"
     done <<< "$lines"
-    printf ' %s%s%s%s%s %s%s%s%s' "$FG_SURFACE1" "$ICON_LROUND" "$BG_SURFACE1" "$FG_SUBTEXT" "$cells" \
-        "$RST" "$FG_SURFACE1" "$ICON_RROUND" "$RST"
+    printf '%s' "$cells"
 }
 
 bar_5hr=$(pct_to_bar "$rate_5hr")
@@ -561,10 +560,13 @@ effort_label=$(effort_gauge "$effort" "$FG_TEAL_DIM")
 detail_label="$(account_label "$account_name" "$FG_TEAL_DIM" "$FG_GREEN_DIM")${effort_label:+ ${effort_label}}"
 stale_label=$(stale_age_label "$rate_age")
 
-pill3=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL}${FG_TEAL_DIM} ${model_icon} ${model_name} ${detail_label} ${bar_5hr}${bar_weekly}${bar_scoped}${rate_pct_display}${stale_label} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
+# The separator marks everything before it as the active account.
+other_cells=$(build_other_cells "$other_rates")
+others_part=""
+[[ -n "$other_cells" ]] && others_part=" ${FG_OVERLAY}│${FG_TEAL_DIM}${other_cells}"
+current_usage="${bar_5hr}${bar_weekly}${bar_scoped}${rate_pct_display}${stale_label}"
 
-# Pill 3b: other accounts' cached usage; empty unless another account has data
-others_pill=$(build_others_pill "$other_rates")
+pill3=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL}${FG_TEAL_DIM} ${model_icon} ${model_name} ${detail_label} ${current_usage}${others_part} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
 
 # Pill 4: Session — combines time + ID
 pill4=" ${FG_FLAMINGO}${ICON_LROUND}${BG_FLAMINGO}${FG_FLAMINGO_DIM} ${session_time} ${FG_CRUST}${session_id} ${RST}${FG_FLAMINGO}${ICON_RROUND}${RST}"
@@ -579,7 +581,7 @@ else
 fi
 
 # Rate pill without model label
-pill3_no_model=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL} ${FG_TEAL_DIM}${bar_5hr}${bar_weekly}${bar_scoped}${rate_pct_display}${stale_label} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
+pill3_no_model=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL} ${FG_TEAL_DIM}${current_usage}${others_part} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
 
 # Session pill without time (ID only)
 pill4_no_time=" ${FG_FLAMINGO}${ICON_LROUND}${BG_FLAMINGO}${FG_CRUST} ${session_id} ${RST}${FG_FLAMINGO}${ICON_RROUND}${RST}"
@@ -588,10 +590,10 @@ pill4_no_time=" ${FG_FLAMINGO}${ICON_LROUND}${BG_FLAMINGO}${FG_CRUST} ${session_
 RIGHT_MARGIN=4
 
 # Try each tier from widest to narrowest
-left="${pill1}${pill2}${pill3}${others_pill}${pill4}${auth_pill}"
+left="${pill1}${pill2}${pill3}${pill4}${auth_pill}"
 if (( $(visible_len "$left") > term_width - RIGHT_MARGIN )); then
     # Tier 2: drop worktree suffix
-    left="${pill1_no_wt}${pill2}${pill3}${others_pill}${pill4}${auth_pill}"
+    left="${pill1_no_wt}${pill2}${pill3}${pill4}${auth_pill}"
 fi
 if (( $(visible_len "$left") > term_width - RIGHT_MARGIN )); then
     # Tier 3: drop model label + session time
