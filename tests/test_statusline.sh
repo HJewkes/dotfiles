@@ -75,4 +75,19 @@ check_raw() {
 check_raw "renders max effort in bold red" "$raw" $'\033[1m\033[38;2;243;139;168m'"$G_FULL"
 check_raw "renders account glyph in dark green on the model pill" "$raw" $'\033[38;2;20;100;45m'"$AGENTS"
 
+# Merged logins: default and personal share one account id (a made-up value).
+write_cache true
+for f in "$HOME/.claude.json" "$HOME/.claude-profiles/personal/.claude.json"; do
+    echo '{"oauthAccount":{"accountUuid":"fixture-shared"}}' > "$f"
+done
+echo '{"oauthAccount":{"accountUuid":"fixture-agents"}}' > "$HOME/.claude-profiles/agents/.claude.json"
+out=$(render '"effort":{"level":"high"},')
+check "shows a shared login once, from its newest record" "$out" "$DEFAULT ▁▄" yes
+check "drops the older record of a shared login" "$out" "$PERSONAL" no
+check "puts the current account first, then a separator, then the others" "$out" "$AGENTS $G_MID ▁▄ │ $DEFAULT ▁▄" yes
+
+out=$(CLAUDE_CONFIG_DIR="$HOME/.claude-profiles/personal" render_with_dir '')
+check "treats the merged account as current when any member is the current dir" "$out" "opus 5.5 $PERSONAL ▁▄ │ $AGENTS ▁▄" yes
+check "does not list the current merged account among the others" "$out" "$DEFAULT" no
+
 exit $((FAILS > 0))
