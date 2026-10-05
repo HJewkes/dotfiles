@@ -76,11 +76,12 @@ check_raw "renders max effort in bold red" "$raw" $'\033[1m\033[38;2;243;139;168
 check_raw "renders account glyph in dark green on the model pill" "$raw" $'\033[38;2;20;100;45m'"$AGENTS"
 
 # Merged logins: default and personal share one account id (a made-up value).
+# Like the live files, the fixtures have no trailing newline.
 write_cache true
 for f in "$HOME/.claude.json" "$HOME/.claude-profiles/personal/.claude.json"; do
-    echo '{"oauthAccount":{"accountUuid":"fixture-shared"}}' > "$f"
+    printf '{"oauthAccount":{"accountUuid":"fixture-shared"}}' > "$f"
 done
-echo '{"oauthAccount":{"accountUuid":"fixture-agents"}}' > "$HOME/.claude-profiles/agents/.claude.json"
+printf '{"oauthAccount":{"accountUuid":"fixture-agents"}}' > "$HOME/.claude-profiles/agents/.claude.json"
 out=$(render '"effort":{"level":"high"},')
 check "shows a shared login once, from its newest record" "$out" "$DEFAULT ▁▄" yes
 check "drops the older record of a shared login" "$out" "$PERSONAL" no

@@ -45,22 +45,26 @@ iso_to_epoch() {
 # that account is "self". The id is only compared in memory, never emitted.
 read_cache() {
     [[ -f "$CACHE_FILE" ]] || return 1
-    local f identity_files=()
+    local f i=0 identity_args=()
     shopt -s nullglob
     for f in "$HOME/.claude.json" "$CONFIG_DIR/.claude.json" "$HOME"/.claude-profiles/*/.claude.json; do
-        # A file listed twice would be read twice and no longer parse.
-        [[ -f "$f" && " ${identity_files[*]} " != *" $f "* ]] && identity_files+=("$f")
+        [[ -f "$f" ]] || continue
+        identity_args+=(--rawfile "id$i" "$f" --arg "path$i" "$f")
+        i=$((i + 1))
     done
     shopt -u nullglob
-    jq -n -R -r --slurpfile cache "$CACHE_FILE" --arg k "$CONFIG_DIR" --arg def "$DEFAULT_DIR" --arg home_id "$HOME/.claude.json" \
-        --argjson now "$(date +%s)" '
+    jq -n -r --slurpfile cache "$CACHE_FILE" --arg k "$CONFIG_DIR" --arg def "$DEFAULT_DIR" --arg home_id "$HOME/.claude.json" \
+        --argjson count "$i" "${identity_args[@]}" --argjson now "$(date +%s)" '
         def age: $now - (.fetched_at // 0);
         def name: .key | sub(".*/"; "") | if . == ".claude" then "default" else . end;
         def idfile($dir): if $dir == $def then $home_id else $dir + "/.claude.json" end;
-        # Identity files are read raw: Claude Code rewrites them often, so one
-        # caught mid-write must only stop that dir from merging.
-        (reduce inputs as $line ({}; .[input_filename] += [$line])
-            | map_values(try (join("\n") | fromjson | .oauthAccount.accountUuid) catch null)) as $ids
+        # Each identity file is its own value (files have no trailing newline,
+        # so they cannot be streamed together). Claude Code rewrites them often:
+        # one caught mid-write must only stop that dir from merging.
+        ($ARGS.named as $named
+            | [range(0; $count) | {key: $named["path\(.)"],
+                                   value: ($named["id\(.)"] | try (fromjson | .oauthAccount.accountUuid) catch null)}]
+            | from_entries) as $ids
         | ($cache[0] | to_entries
             | map(. + {account: ($ids[idfile(.key)] // .key)})
             | group_by(.account)
@@ -85,7 +89,7 @@ read_cache() {
               , (.value | age)
               , (.value.weekly_sev    // "")
               ] | join("|"))
-    ' "${identity_files[@]}" 2>/dev/null
+    ' 2>/dev/null
 }
 
 # Output contract: the own record (without its tag) first, then the others.
