@@ -14,6 +14,9 @@ CACHE_FILE="${REFRESH_CACHE_FILE:-$HOME/.claude/status-cache/usage.json}"
 LOG_FILE="${REFRESH_LOG_FILE:-$HOME/Library/Logs/claude-usage-refresh.log}"
 LOG_MAX_LINES=200
 WAIT_SECONDS="${REFRESH_WAIT_SECONDS:-15}"
+# Must match CACHE_TTL in rate-limits.sh: a record younger than this is served
+# as is, so it counts as fresh even though this run did not fetch it.
+CACHE_TTL=120
 
 log_failure() {
     mkdir -p "$(dirname "$LOG_FILE")"
@@ -30,7 +33,7 @@ fetched_at() {
 wait_for_fresh_record() {
     local dir="$1" started="$2" i
     for ((i = 0; i < WAIT_SECONDS; i++)); do
-        (( $(fetched_at "$dir") >= started )) && return 0
+        (( $(fetched_at "$dir") >= started - CACHE_TTL )) && return 0
         sleep 1
     done
     return 1
