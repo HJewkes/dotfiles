@@ -32,6 +32,6 @@ check "profile with no fresh record is logged" 'grep -q " broken no fresh usage"
 for i in {1..300}; do echo "old line $i" >> "$REFRESH_LOG_FILE"; done
 bash "$SCRIPT"
 check "log is truncated to its bound" '(( $(wc -l < "$REFRESH_LOG_FILE") <= 200 ))'
-check "newest failures survive truncation" 'tail -n 1 "$REFRESH_LOG_FILE" | grep -q " broken "'
+check "newest failures survive truncation" 'tail -n 1 "$REFRESH_LOG_FILE" | grep -q " crashy exit 3$"'
 
 exit $FAILS
