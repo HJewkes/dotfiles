@@ -54,7 +54,7 @@ if [[ -x "$HOME/.claude/scripts/session-budget-write.sh" ]]; then
 fi
 
 # ── Parse all JSON fields in a single jq call ───────────────
-read -r model_id used_pct cache_read cache_create ctx_size duration_ms lines_add lines_rm exceeds_200k session_id <<< \
+read -r model_id used_pct cache_read cache_create ctx_size duration_ms lines_add lines_rm exceeds_200k session_id effort <<< \
   $(echo "$input" | jq -r '[
     (if (.model.id // "" | length) > 0 then .model.id else "unknown" end),
     .context_window.used_percentage // 0,
@@ -65,7 +65,8 @@ read -r model_id used_pct cache_read cache_create ctx_size duration_ms lines_add
     .cost.total_lines_added // 0,
     .cost.total_lines_removed // 0,
     .exceeds_200k_tokens // false,
-    .session_id // "unknown"
+    .session_id // "unknown",
+    .effort.level // "-"
   ] | @tsv' 2>/dev/null)
 
 # ── Fallbacks for empty/malformed input ─────────────────────
@@ -79,6 +80,7 @@ read -r model_id used_pct cache_read cache_create ctx_size duration_ms lines_add
 [[ -z "$lines_rm" || "$lines_rm" == "null" ]] && lines_rm=0
 [[ -z "$exceeds_200k" || "$exceeds_200k" == "null" ]] && exceeds_200k="false"
 [[ -z "$session_id" || "$session_id" == "null" ]] && session_id="unknown"
+[[ -z "$effort" || "$effort" == "null" || "$effort" == "-" ]] && effort=""
 
 # ── MODEL NAME PARSING ──────────────────────────────────────
 # Version segments are 1-2 digits; longer runs are date stamps (20250929)
@@ -228,9 +230,10 @@ detect_git_state() {
 }
 
 # ── RATE LIMIT DATA ────────────────────────────────────────
-rate_data=$("$HOME/.claude/scripts/rate-limits.sh" 2>/dev/null)
+rate_data=$("${STATUSLINE_RATE_LIMITS:-$HOME/.claude/scripts/rate-limits.sh}" 2>/dev/null)
 IFS='|' read -r rate_5hr rate_weekly rate_5hr_reset rate_weekly_reset \
-    rate_scoped rate_scoped_model rate_weekly_sev rate_scoped_sev <<< "$rate_data"
+    rate_scoped rate_scoped_model rate_weekly_sev rate_scoped_sev rate_age <<< "${rate_data%%$'\n'*}"
+other_rates=$(sed -n '/^other|/p' <<< "$rate_data")
 [[ -z "$rate_5hr" ]] && rate_5hr="unknown"
 [[ -z "$rate_weekly" ]] && rate_weekly="unknown"
 
@@ -456,6 +459,44 @@ fi
 pill2=" ${FG_BLUE}${ICON_LROUND}${BG_BLUE} ${blue_part}${teal_part}${gray_part} ${pct_color}${pct_int}% ${FG_SURFACE1}${ctx_label} ${RST}${BG_BLUE}${compact_label}${RST}${FG_BLUE}${ICON_RROUND}${RST}"
 
 # Pill 3: Rate limit — teal caps
+STALE_AFTER=300
+
+account_short_name() {
+    local base="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+    base="${base:t}"
+    [[ "$base" == ".claude" ]] && base="default"
+    echo "$base"
+}
+
+# Age in the coarsest useful unit, e.g. 7m, 3h, 2d.
+format_age() {
+    local sec="$1"
+    if ((sec >= 86400)); then echo "$((sec / 86400))d"
+    elif ((sec >= 3600)); then echo "$((sec / 3600))h"
+    else echo "$((sec / 60))m"
+    fi
+}
+
+# " ⚠ 7m" when the cached figures are older than STALE_AFTER, else nothing.
+# Restores $2 (the pill's text color) afterwards.
+stale_age_label() {
+    local age="$1" restore="${2:-$FG_TEAL_DIM}"
+    [[ "$age" =~ ^[0-9]+$ ]] || return 0
+    ((age > STALE_AFTER)) && printf ' %s%s %s%s' "$FG_RED" "$ICON_WARN" "$(format_age "$age")" "$restore"
+    return 0
+}
+
+# One "name 5hr/weekly bars[ age]" cell per other account, one shared pill.
+build_others_pill() {
+    local lines="$1" tag name five weekly age sev cells=""
+    [[ -z "$lines" ]] && return 0
+    while IFS='|' read -r tag name five weekly age sev; do
+        cells+=" ${name} $(pct_to_bar "$five")$(pct_to_bar "$weekly")$(stale_age_label "$age" "$FG_SUBTEXT")"
+    done <<< "$lines"
+    printf ' %s%s%s%s%s %s%s%s%s' "$FG_SURFACE1" "$ICON_LROUND" "$BG_SURFACE1" "$FG_SUBTEXT" "$cells" \
+        "$RST" "$FG_SURFACE1" "$ICON_RROUND" "$RST"
+}
+
 bar_5hr=$(pct_to_bar "$rate_5hr")
 bar_weekly=$(pct_to_bar "$rate_weekly")
 color_5hr=$(pct_to_color "$rate_5hr")
@@ -477,7 +518,14 @@ if [[ "$rate_5hr" != "unknown" ]] && (( rate_5hr >= 80 )); then
     rate_pct_display=" ${rate_5hr}%"
 fi
 
-pill3=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL}${FG_TEAL_DIM} ${model_icon} ${model_name} ${bar_5hr}${bar_weekly}${bar_scoped}${rate_pct_display} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
+account_name=$(account_short_name)
+detail_label="${account_name}${effort:+ ${effort}}"
+stale_label=$(stale_age_label "$rate_age")
+
+pill3=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL}${FG_TEAL_DIM} ${model_icon} ${model_name} ${detail_label} ${bar_5hr}${bar_weekly}${bar_scoped}${rate_pct_display}${stale_label} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
+
+# Pill 3b: other accounts' cached usage; empty unless another account has data
+others_pill=$(build_others_pill "$other_rates")
 
 # Pill 4: Session — combines time + ID
 pill4=" ${FG_FLAMINGO}${ICON_LROUND}${BG_FLAMINGO}${FG_FLAMINGO_DIM} ${session_time} ${FG_CRUST}${session_id} ${RST}${FG_FLAMINGO}${ICON_RROUND}${RST}"
@@ -492,7 +540,7 @@ else
 fi
 
 # Rate pill without model label
-pill3_no_model=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL} ${FG_TEAL_DIM}${bar_5hr}${bar_weekly}${bar_scoped}${rate_pct_display} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
+pill3_no_model=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL} ${FG_TEAL_DIM}${bar_5hr}${bar_weekly}${bar_scoped}${rate_pct_display}${stale_label} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
 
 # Session pill without time (ID only)
 pill4_no_time=" ${FG_FLAMINGO}${ICON_LROUND}${BG_FLAMINGO}${FG_CRUST} ${session_id} ${RST}${FG_FLAMINGO}${ICON_RROUND}${RST}"
@@ -501,10 +549,10 @@ pill4_no_time=" ${FG_FLAMINGO}${ICON_LROUND}${BG_FLAMINGO}${FG_CRUST} ${session_
 RIGHT_MARGIN=4
 
 # Try each tier from widest to narrowest
-left="${pill1}${pill2}${pill3}${pill4}${auth_pill}"
+left="${pill1}${pill2}${pill3}${others_pill}${pill4}${auth_pill}"
 if (( $(visible_len "$left") > term_width - RIGHT_MARGIN )); then
     # Tier 2: drop worktree suffix
-    left="${pill1_no_wt}${pill2}${pill3}${pill4}${auth_pill}"
+    left="${pill1_no_wt}${pill2}${pill3}${others_pill}${pill4}${auth_pill}"
 fi
 if (( $(visible_len "$left") > term_width - RIGHT_MARGIN )); then
     # Tier 3: drop model label + session time

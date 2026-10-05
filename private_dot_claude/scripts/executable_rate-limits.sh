@@ -1,8 +1,9 @@
 #!/bin/bash
 # Usage figures for the ACTIVE Claude profile, from a shared cache.
 #
-# Output: 5HR|WEEKLY|5HR_RESET|WEEKLY_RESET|SCOPED_PCT|SCOPED_MODEL|WEEKLY_SEV|SCOPED_SEV
-# On failure: "unknown"
+# Line 1: 5HR|WEEKLY|5HR_RESET|WEEKLY_RESET|SCOPED_PCT|SCOPED_MODEL|WEEKLY_SEV|SCOPED_SEV|AGE
+# Then one line per other cached profile: other|NAME|5HR|WEEKLY|AGE|WEEKLY_SEV
+# On failure: "unknown" (other-profile lines may still follow)
 #
 # The status line renders on every prompt and many terminals run at once, so
 # this never blocks on the network: it serves whatever is cached and refreshes
@@ -33,33 +34,42 @@ iso_to_epoch() {
     date -j -f "%Y-%m-%dT%H:%M:%S" "${ts%%.*}" "+%s" 2>/dev/null || echo 0
 }
 
-# Emit the cached record for this profile, or nothing if absent.
-read_entry() {
+# Emit every cached record in one jq pass: "self|..." for this profile, then
+# "other|NAME|5HR|WEEKLY|AGE|WEEKLY_SEV" per other profile. Ages are seconds
+# since the record was fetched. Other profiles are read from cache only; they
+# are refreshed by their own sessions, never from here.
+read_cache() {
     [[ -f "$CACHE_FILE" ]] || return 1
-    local line
-    line=$(jq -r --arg k "$CONFIG_DIR" '
-        .[$k] // empty
-        | [ (.five_hour_pct   // "unknown")
-          , (.weekly_pct      // "unknown")
-          , (.five_hour_reset // 0)
-          , (.weekly_reset    // 0)
-          , (.scoped_pct      // "")
-          , (.scoped_model    // "")
-          , (.weekly_sev      // "")
-          , (.scoped_sev      // "")
-          ] | join("|")
-    ' "$CACHE_FILE" 2>/dev/null) || return 1
-    [[ -n "$line" ]] || return 1
-    printf '%s\n' "$line"
+    jq -r --arg k "$CONFIG_DIR" --argjson now "$(date +%s)" '
+        def age: $now - (.fetched_at // 0);
+        def name: .key | sub(".*/"; "") | if . == ".claude" then "default" else . end;
+        (.[$k] // empty
+            | ["self"
+              , (.five_hour_pct   // "unknown")
+              , (.weekly_pct      // "unknown")
+              , (.five_hour_reset // 0)
+              , (.weekly_reset    // 0)
+              , (.scoped_pct      // "")
+              , (.scoped_model    // "")
+              , (.weekly_sev      // "")
+              , (.scoped_sev      // "")
+              , age
+              ] | join("|")),
+        (to_entries[] | select(.key != $k)
+            | [ "other", name
+              , (.value.five_hour_pct // "unknown")
+              , (.value.weekly_pct    // "unknown")
+              , (.value | age)
+              , (.value.weekly_sev    // "")
+              ] | join("|"))
+    ' "$CACHE_FILE" 2>/dev/null
 }
 
-entry_age() {
-    [[ -f "$CACHE_FILE" ]] || { echo 999999; return; }
-    local fetched now
-    fetched=$(jq -r --arg k "$CONFIG_DIR" '.[$k].fetched_at // 0' "$CACHE_FILE" 2>/dev/null)
-    [[ "$fetched" =~ ^[0-9]+$ ]] || fetched=0
-    now=$(date +%s)
-    echo $(( now - fetched ))
+# Output contract: the own record (without its tag) first, then the others.
+emit() {
+    local all="$1"
+    sed -n 's/^self|//p' <<<"$all"
+    sed -n '/^other|/p' <<<"$all"
 }
 
 # Pull usage for this profile and merge it into the shared file. The file is
@@ -134,29 +144,34 @@ acquire_lock() {
 
 mkdir -p "$CACHE_DIR"
 
-cached=$(read_entry)
-age=$(entry_age)
+all=$(read_cache)
+self_line=$(sed -n 's/^self|//p' <<<"$all")
+age=${self_line##*|}
+[[ "$age" =~ ^[0-9]+$ ]] || age=999999
 
-if (( age < CACHE_TTL )) && [[ -n "$cached" ]]; then
-    printf '%s\n' "$cached"
+if (( age < CACHE_TTL )); then
+    emit "$all"
     exit 0
 fi
 
-if [[ -n "$cached" ]]; then
+if [[ -n "$self_line" ]]; then
     # Stale but usable: serve it now, refresh out of band so the prompt stays fast.
     if acquire_lock; then
         ( refresh; release_lock ) >/dev/null 2>&1 &
         disown 2>/dev/null
     fi
-    printf '%s\n' "$cached"
+    emit "$all"
     exit 0
 fi
 
-# Nothing cached at all — fetch synchronously so the first render is not blank.
+# Nothing cached for this profile: fetch synchronously so the first render is not blank.
 if acquire_lock; then
     refresh >/dev/null 2>&1
     release_lock
 fi
 
-cached=$(read_entry) && { printf '%s\n' "$cached"; exit 0; }
+all=$(read_cache)
+if grep -q '^self|' <<<"$all"; then emit "$all"; exit 0; fi
 echo "unknown"
+[[ -n "$all" ]] && emit "$all"
+exit 0
