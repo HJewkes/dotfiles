@@ -25,6 +25,7 @@ FG_BLUE_DIM="\033[38;2;80;110;180m"
 FG_TEAL_DIM="\033[38;2;40;110;95m"
 FG_FLAMINGO="\033[38;2;242;205;205m"
 FG_FLAMINGO_DIM="\033[38;2;150;110;110m"
+FG_GREEN_DIM="\033[38;2;20;100;45m"
 FG_GREEN="\033[38;2;166;227;161m"
 FG_YELLOW="\033[38;2;249;226;175m"
 FG_PEACH="\033[38;2;250;179;135m"
@@ -47,6 +48,10 @@ ICON_ACCT_DEFAULT=$(printf '\uf007')
 ICON_ACCT_AGENTS=$(printf '\U000f06a9')
 ICON_ACCT_PERSONAL=$(printf '\uf015')
 ICON_ACCT_WORKOUT=$(printf '\U000f01e6')
+ICON_GAUGE_EMPTY=$(printf '\U000f0873')
+ICON_GAUGE_LOW=$(printf '\U000f0875')
+ICON_GAUGE_MID=$(printf '\U000f029a')
+ICON_GAUGE_FULL=$(printf '\U000f0874')
 
 # ── Read stdin ──────────────────────────────────────────────
 input=$(cat)
@@ -472,10 +477,10 @@ account_short_name() {
     echo "$base"
 }
 
-# Account glyph in the account's own color, then restores $2 (the pill's text
-# color). An unknown account falls back to its short name.
+# Account glyph in the account's own color (or $3 when given), then restores $2
+# (the pill's text color). An unknown account falls back to its short name.
 account_label() {
-    local name="$1" restore="$2" icon color
+    local name="$1" restore="$2" icon color override="$3"
     case "$name" in
         default)  icon="$ICON_ACCT_DEFAULT";  color="$FG_BLUE" ;;
         agents)   icon="$ICON_ACCT_AGENTS";   color="$FG_MAUVE" ;;
@@ -483,7 +488,22 @@ account_label() {
         workout)  icon="$ICON_ACCT_WORKOUT";  color="$FG_RED" ;;
         *) printf '%s' "$name"; return 0 ;;
     esac
-    printf '%s%s%s' "$color" "$icon" "$restore"
+    printf '%s%s%s' "${override:-$color}" "$icon" "$restore"
+}
+
+# Effort level as a gauge glyph; max is bold red. An unknown level prints as
+# text. Restores $2 (the pill's text color) afterwards.
+effort_gauge() {
+    local level="$1" restore="$2"
+    case "$level" in
+        "")     return 0 ;;
+        low)    printf '%s' "$ICON_GAUGE_EMPTY" ;;
+        medium) printf '%s' "$ICON_GAUGE_LOW" ;;
+        high)   printf '%s' "$ICON_GAUGE_MID" ;;
+        xhigh)  printf '%s' "$ICON_GAUGE_FULL" ;;
+        max)    printf '%s%s%s\033[22m%s' "$BOLD" "$FG_RED" "$ICON_GAUGE_FULL" "$restore" ;;
+        *)      printf '%s' "$level" ;;
+    esac
 }
 
 # Age in the coarsest useful unit, e.g. 7m, 3h, 2d.
@@ -495,12 +515,12 @@ format_age() {
     fi
 }
 
-# " ⚠ 7m" when the cached figures are older than STALE_AFTER, else nothing.
+# " 7m old" when the cached figures are older than STALE_AFTER, else nothing.
 # Restores $2 (the pill's text color) afterwards.
 stale_age_label() {
     local age="$1" restore="${2:-$FG_TEAL_DIM}"
     [[ "$age" =~ ^[0-9]+$ ]] || return 0
-    ((age > STALE_AFTER)) && printf ' %s%s %s%s' "$FG_RED" "$ICON_WARN" "$(format_age "$age")" "$restore"
+    ((age > STALE_AFTER)) && printf ' %s%s old%s' "$FG_RED" "$(format_age "$age")" "$restore"
     return 0
 }
 
@@ -537,7 +557,8 @@ if [[ "$rate_5hr" != "unknown" ]] && (( rate_5hr >= 80 )); then
 fi
 
 account_name=$(account_short_name)
-detail_label="$(account_label "$account_name" "$FG_TEAL_DIM")${effort:+ ${effort}}"
+effort_label=$(effort_gauge "$effort" "$FG_TEAL_DIM")
+detail_label="$(account_label "$account_name" "$FG_TEAL_DIM" "$FG_GREEN_DIM")${effort_label:+ ${effort_label}}"
 stale_label=$(stale_age_label "$rate_age")
 
 pill3=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL}${FG_TEAL_DIM} ${model_icon} ${model_name} ${detail_label} ${bar_5hr}${bar_weekly}${bar_scoped}${rate_pct_display}${stale_label} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
