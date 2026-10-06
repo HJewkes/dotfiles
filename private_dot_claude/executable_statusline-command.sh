@@ -47,6 +47,7 @@ ICON_ACCT_DEFAULT=$(printf '\uf007')
 ICON_ACCT_AGENTS=$(printf '\U000f06a9')
 ICON_ACCT_PERSONAL=$(printf '\uf015')
 ICON_ACCT_WORKOUT=$(printf '\U000f01e6')
+ICON_ACCT_SERVER=$(printf '\U000f048b')
 ICON_GAUGE_EMPTY=$(printf '\U000f0873')
 ICON_GAUGE_LOW=$(printf '\U000f0875')
 ICON_GAUGE_MID=$(printf '\U000f029a')
@@ -482,6 +483,7 @@ account_label() {
         agents)   printf '%s' "$ICON_ACCT_AGENTS" ;;
         personal) printf '%s' "$ICON_ACCT_PERSONAL" ;;
         workout)  printf '%s' "$ICON_ACCT_WORKOUT" ;;
+        server)   printf '%s' "$ICON_ACCT_SERVER" ;;
         *)        printf '%s' "$1" ;;
     esac
 }
