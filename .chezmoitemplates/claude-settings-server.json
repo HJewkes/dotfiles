@@ -1,0 +1,7 @@
+{
+  "autoMode": {
+    "environment": [
+      "**Host**: Ubuntu host {{ .chezmoi.hostname }}, user {{ .chezmoi.username }}, home {{ .chezmoi.homeDir }}, the same home path as the owner's Mac. Repositories live under ~/projects; active-work data sits where it does on the Mac."
+    ]
+  }
+}

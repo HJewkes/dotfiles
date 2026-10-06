@@ -1,6 +1,6 @@
 {{- $name := promptStringOnce . "name" "Git author name" -}}
 {{- $email := promptStringOnce . "email" "Git author email" -}}
-{{- $machine := promptChoiceOnce . "machine" "Machine type" (list "personal" "work") -}}
+{{- $machine := promptChoiceOnce . "machine" "Machine type" (list "personal" "work" "server") -}}
 
 encryption = "age"
 

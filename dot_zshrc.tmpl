@@ -1,5 +1,7 @@
+{{ if eq .chezmoi.os "darwin" -}}
 eval "$(/opt/homebrew/bin/brew shellenv)"
 
+{{ end -}}
 source ~/.zsh/config.zsh
 source ~/.zsh/completion.zsh
 source ~/.zsh/plugins.zsh

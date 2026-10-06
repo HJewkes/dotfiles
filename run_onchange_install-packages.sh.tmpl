@@ -1,4 +1,5 @@
 #!/bin/bash
+{{ if eq .chezmoi.os "darwin" -}}
 # Brewfile hash: {{ include "Brewfile" | sha256sum }}
 
 set -euo pipefail
@@ -10,6 +11,23 @@ if ! command -v brew &>/dev/null; then
 fi
 
 brew bundle --file="{{ .chezmoi.sourceDir }}/Brewfile"
+{{- else }}
+# No Homebrew here: the base toolchain (node, gh, git, tmux, claude, chezmoi, uv)
+# comes from the server's own bootstrap script. This adds only what these
+# dotfiles need on top: zsh for the shell config and the Claude status line,
+# starship for the prompt, jq for the status scripts.
+
+set -euo pipefail
+
+missing=()
+for pkg in zsh starship jq; do
+    dpkg -s "$pkg" &>/dev/null || missing+=("$pkg")
+done
+if (( ${#missing[@]} )); then
+    echo "Installing ${missing[*]} via apt..."
+    sudo apt-get install -y "${missing[@]}"
+fi
+{{- end }}
 
 # Agent skills
 if command -v npx &>/dev/null; then
