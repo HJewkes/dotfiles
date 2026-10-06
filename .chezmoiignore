@@ -52,3 +52,8 @@ Library
 .local/libexec/claude-shim
 install-claude-shim.sh
 {{ end }}
+
+{{ if eq .chezmoi.os "darwin" }}
+# Linux only; macOS gets ~/.local/bin from .zshrc and path_helper.
+.zshenv
+{{ end }}
