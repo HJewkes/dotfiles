@@ -4,4 +4,19 @@
 {{- $patch := dict -}}
 {{- if stat $patchPath -}}{{- $patch = include $patchPath | fromJson -}}{{- end -}}
 {{- $base := includeTemplate "claude-settings-base.json" . | fromJson -}}
-{{ mergeOverwrite $base $patch | toPrettyJson }}
+{{- $settings := mergeOverwrite $base $patch -}}
+{{- if eq .machine "server" -}}
+{{- /* Appended rather than merged so a copied private patch keeps its own
+       environment entries alongside the host description. */ -}}
+{{-   $server := includeTemplate "claude-settings-server.json" . | fromJson -}}
+{{-   $environment := get $settings.autoMode "environment" | default (list "$defaults") -}}
+{{-   $_ := set $settings.autoMode "environment" (concat $environment $server.autoMode.environment) -}}
+{{- end -}}
+{{- if ne .chezmoi.os "darwin" -}}
+{{- /* AppleEvents and osascript exist only on macOS. Stripped after the patch
+       merge so a copied private patch cannot bring them back. A push-based
+       Notification hook for headless hosts is planned separately. */ -}}
+{{-   $_ := unset $settings.sandbox "allowAppleEvents" -}}
+{{-   $_ = unset $settings.hooks "Notification" -}}
+{{- end -}}
+{{ $settings | toPrettyJson }}

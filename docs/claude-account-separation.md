@@ -35,6 +35,10 @@ shim at launch. The shim lives at `~/.local/libexec/claude-shim/claude` and is
 symlinked to `/opt/homebrew/bin/claude`, which precedes the real
 `~/.local/bin/claude` on PATH.
 
+The shim is macOS only. On Linux no PATH directory precedes `~/.local/bin`
+without sudo, so chezmoi skips it there; `claude-profile <name>` still works
+per shell, but the baseline file is not read at launch.
+
 Precedence, highest first:
 
 1. `CLAUDE_CONFIG_DIR` already set — `aw` sets it from an initiative's brief.
