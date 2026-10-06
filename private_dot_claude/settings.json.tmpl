@@ -18,5 +18,16 @@
        Notification hook for headless hosts is planned separately. */ -}}
 {{-   $_ := unset $settings.sandbox "allowAppleEvents" -}}
 {{-   $_ = unset $settings.hooks "Notification" -}}
+{{- /* The private patch wires iTerm's cc-status (a Mach-O binary) into every
+       hook event; drop those groups so Linux hooks don't fail on each call. */ -}}
+{{-   $hooks := dict -}}
+{{-   range $event, $groups := $settings.hooks -}}
+{{-     $kept := list -}}
+{{-     range $groups -}}
+{{-       if not (contains "iterm2/cc-status" (toJson .)) -}}{{- $kept = append $kept . -}}{{- end -}}
+{{-     end -}}
+{{-     if $kept -}}{{- $_ := set $hooks $event $kept -}}{{- end -}}
+{{-   end -}}
+{{-   $_ = set $settings "hooks" $hooks -}}
 {{- end -}}
 {{ $settings | toPrettyJson }}
