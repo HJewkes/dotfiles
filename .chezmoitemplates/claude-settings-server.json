@@ -3,5 +3,24 @@
     "environment": [
       "**Host**: Ubuntu host {{ .chezmoi.hostname }}, user {{ .chezmoi.username }}, home {{ .chezmoi.homeDir }}, the same home path as the owner's Mac. Repositories live under ~/projects; active-work data sits where it does on the Mac."
     ]
+  },
+  "kwin": {
+    "deny": [
+      "mcp__kwin__dbus_call",
+      "mcp__kwin__launch_app",
+      "mcp__kwin__clipboard_get"
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "python3 \"$HOME/.claude/scripts/kwin-session-start-guard.py\"",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "mcp__kwin__session_start"
+      }
+    ]
   }
 }
