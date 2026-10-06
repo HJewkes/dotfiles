@@ -57,6 +57,17 @@ Steps, run by the owner:
    A private settings patch copied into `~/.config/chezmoi/` is merged as on the
    Mac, and the macOS-only keys are still dropped afterwards.
 
+6. KDE computer use for agents (kwin-mcp). Apply installs it with the Ubuntu
+   packages it needs, into `~/.local/share/kwin-mcp/venv` from the hash-pinned
+   `requirements.txt` there, then registers the `kwin` MCP server at user scope
+   in every Claude config dir that uses `~/.claude/settings.json`. The server
+   runs in a transient systemd user unit with a scrubbed environment, so its
+   virtual KWin sessions die with it. The server settings deny
+   `mcp__kwin__dbus_call`, `mcp__kwin__launch_app` and
+   `mcp__kwin__clipboard_get`, and a PreToolUse hook lets `session_start` launch
+   only allowlisted apps, with no extra env and `isolate_home: true`. Don't bump
+   the pin without re-reading upstream.
+
 Not deployed on Linux: the LaunchAgent and `refresh-usage.sh`, `rate-limits.sh`
 (it reads the macOS Keychain, so the status line shows usage as unknown), and
 the `claude` profile shim.

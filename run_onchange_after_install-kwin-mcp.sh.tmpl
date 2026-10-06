@@ -1,0 +1,85 @@
+{{ if and (eq .chezmoi.os "linux") (eq .machine "server") -}}
+#!/bin/bash
+# requirements.txt hash: {{ include "dot_local/share/kwin-mcp/requirements.txt" | sha256sum }}
+# Builds the hash-pinned kwin-mcp venv and registers the server with every
+# Claude config dir that uses the managed settings.json, so the kwin denies and
+# the session_start hook always apply where the tools exist. Runs after files,
+# so those settings are on disk first.
+
+set -euo pipefail
+
+kwin_dir="$HOME/.local/share/kwin-mcp"
+venv="$kwin_dir/venv"
+settings="$HOME/.claude/settings.json"
+
+install_packages() {
+    local missing=() pkg
+    for pkg in libei1 kde-spectacle wl-clipboard wayland-utils at-spi2-core \
+               python3-gi python3-dbus gir1.2-atspi-2.0 python3-venv; do
+        dpkg -s "$pkg" &>/dev/null || missing+=("$pkg")
+    done
+    if (( ${#missing[@]} )); then
+        echo "Installing ${missing[*]} via apt..."
+        sudo apt-get install -y "${missing[@]}"
+    fi
+}
+
+# PyGObject and dbus-python come from Ubuntu, hence --system-site-packages.
+build_venv() {
+    rm -rf "$venv"
+    /usr/bin/python3 -m venv --system-site-packages "$venv"
+    "$venv/bin/python" -m pip install --quiet --disable-pip-version-check \
+        --require-hashes --no-deps --only-binary :all: -r "$kwin_dir/requirements.txt"
+}
+
+settings_guard_kwin() {
+    jq -e '[.permissions.deny[]?] as $d
+        | (["mcp__kwin__dbus_call", "mcp__kwin__launch_app", "mcp__kwin__clipboard_get"]
+           | all(. as $t | $d | index($t)))
+        and ([.hooks.PreToolUse[]?.matcher] | index("mcp__kwin__session_start"))' \
+        "$settings" >/dev/null
+}
+
+# A transient unit per server: stdio over --pipe, and the whole cgroup (virtual
+# KWin sessions and their apps) goes when the server exits.
+server_json() {
+    jq -cn --arg launcher "$kwin_dir/scrubbed-env.sh" --arg server "$venv/bin/kwin-mcp" '{
+        type: "stdio", command: "/usr/bin/systemd-run",
+        args: ["--user", "--pipe", "--quiet", "--collect", "--description=kwin-mcp",
+               "-p", "KillMode=control-group", "-p", "MemoryMax=16G",
+               "--", $launcher, $server]}'
+}
+
+# Empty config dir means the default ~/.claude.json, so the variable is unset
+# (chezmoi may itself run under a profile's CLAUDE_CONFIG_DIR).
+claude_in() {
+    local dir=$1
+    shift
+    if [[ -n "$dir" ]]; then
+        CLAUDE_CONFIG_DIR="$dir" "$HOME/.local/bin/claude" "$@"
+    else
+        env -u CLAUDE_CONFIG_DIR "$HOME/.local/bin/claude" "$@"
+    fi
+}
+
+register() {
+    local json dir
+    json=$(server_json)
+    for dir in "" "$HOME"/.claude-profiles/*/; do
+        dir=${dir%/}
+        if [[ -n "$dir" && "$(readlink -f "$dir/settings.json")" != "$(readlink -f "$settings")" ]]; then
+            continue
+        fi
+        claude_in "$dir" mcp remove --scope user kwin &>/dev/null || true
+        claude_in "$dir" mcp add-json --scope user kwin "$json"
+    done
+}
+
+install_packages
+build_venv
+if ! settings_guard_kwin; then
+    echo "kwin-mcp: denies or session_start hook missing from $settings; not registering" >&2
+    exit 1
+fi
+register
+{{ end -}}

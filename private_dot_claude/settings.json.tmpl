@@ -11,6 +11,15 @@
 {{-   $server := includeTemplate "claude-settings-server.json" . | fromJson -}}
 {{-   $environment := get $settings.autoMode "environment" | default (list "$defaults") -}}
 {{-   $_ := set $settings.autoMode "environment" (concat $environment $server.autoMode.environment) -}}
+{{- /* kwin-mcp tools that run commands, reach the session bus or read the
+       clipboard are denied; session_start is gated by a hook. Appended after
+       the patch merge so a private patch cannot drop them. */ -}}
+{{-   if eq .chezmoi.os "linux" -}}
+{{-     $deny := get $settings.permissions "deny" | default list -}}
+{{-     $_ = set $settings.permissions "deny" (concat $deny $server.kwin.deny) -}}
+{{-     $preToolUse := get $settings.hooks "PreToolUse" | default list -}}
+{{-     $_ = set $settings.hooks "PreToolUse" (concat $preToolUse $server.kwin.PreToolUse) -}}
+{{-   end -}}
 {{- end -}}
 {{- if ne .chezmoi.os "darwin" -}}
 {{- /* AppleEvents and osascript exist only on macOS. Stripped after the patch

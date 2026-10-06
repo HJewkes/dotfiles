@@ -57,3 +57,10 @@ install-claude-shim.sh
 # Linux only; macOS gets ~/.local/bin from .zshrc and path_helper.
 .zshenv
 {{ end }}
+
+{{ if not (and (eq .chezmoi.os "linux") (eq .machine "server")) }}
+# kwin-mcp (KDE computer use for agents) runs on the Linux server only.
+.local/share/kwin-mcp
+.claude/scripts/kwin-session-start-guard.py
+install-kwin-mcp.sh
+{{ end }}
