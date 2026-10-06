@@ -1,0 +1,2 @@
+# Linux only: non-interactive zsh (ssh commands, spawned agents) never reads .zshrc, so put ~/.local/bin on PATH here.
+[[ ":$PATH:" == *":$HOME/.local/bin:"* ]] || export PATH="$HOME/.local/bin:$PATH"
