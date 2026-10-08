@@ -1,2 +1,4 @@
 # Linux only: non-interactive zsh (ssh commands, spawned agents) never reads .zshrc, so put ~/.local/bin on PATH here.
 [[ ":$PATH:" == *":$HOME/.local/bin:"* ]] || export PATH="$HOME/.local/bin:$PATH"
+# /tmp on the Linux server is a 1M-inode tmpfs; keep the node compile cache on disk.
+export NODE_COMPILE_CACHE="${NODE_COMPILE_CACHE:-$HOME/.cache/node-compile-cache}"
