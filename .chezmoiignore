@@ -64,3 +64,8 @@ install-claude-shim.sh
 .claude/scripts/kwin-session-start-guard.py
 install-kwin-mcp.sh
 {{ end }}
+
+{{ if ne .machine "server" }}
+# The console TLS drop-in reads the tailnet name from tailscale on basement (TP-1998).
+.config/systemd/user/titan-console.service.d
+{{ end }}
