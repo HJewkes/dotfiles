@@ -1,0 +1,6 @@
+[Unit]
+Description=Alert when /tmp inode use crosses 60% or 72% or spikes (BS-28)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/tmp-inode-alarm
