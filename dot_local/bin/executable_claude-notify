@@ -1,0 +1,55 @@
+#!/bin/sh
+# Claude Code Notification hook. macOS shows a local notification; Linux pushes
+# to the ntfy topic in ~/.config/claude-notify/env. Always exits 0 so a hook
+# failure never interrupts a session.
+ENV_FILE="$HOME/.config/claude-notify/env"
+STATE_DIR="${XDG_RUNTIME_DIR:-$HOME/.cache}/claude-notify"
+QUIET_SECONDS=600
+
+notify_darwin() {
+  osascript -e 'display notification "Claude Code needs your attention" with title "Claude Code" sound name "Funk"'
+}
+
+env_value() {
+  sed -n "s/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}$1=//p" "$ENV_FILE" | tail -n 1 | sed "s/^[\"']//; s/[\"']\$//"
+}
+
+json_field() {
+  printf '%s' "$1" | jq -r "$2 // empty" 2>/dev/null
+}
+
+# True when this session posted within the quiet window; otherwise records now.
+recently_notified() {
+  stamp="$STATE_DIR/$(printf '%s' "$1" | tr -c 'A-Za-z0-9_-' '_')"
+  now=$(date +%s)
+  last=$(cat "$stamp" 2>/dev/null)
+  case "$last" in '' | *[!0-9]*) last=0 ;; esac
+  [ $((now - last)) -lt "$QUIET_SECONDS" ] && return 0
+  mkdir -p "$STATE_DIR" 2>/dev/null && printf '%s\n' "$now" > "$stamp" 2>/dev/null
+  return 1
+}
+
+# The token goes through curl's stdin config so it never shows up in ps.
+post() {
+  printf 'header = "Authorization: Bearer %s"\n' "$4" | curl -fsS --max-time 10 \
+    ${4:+-K -} -H "Title: $2" --data-binary "$3" "$1" > /dev/null 2>&1
+}
+
+notify_linux() {
+  [ -r "$ENV_FILE" ] || return 0
+  url=$(env_value NTFY_URL)
+  [ -n "$url" ] || return 0
+  input=$(cat)
+  session=$(json_field "$input" .session_id)
+  recently_notified "${session:-unknown}" && return 0
+  cwd=$(json_field "$input" .cwd)
+  name=${AGENT_CHAT_NAME:-$(basename "${cwd:-$PWD}")}
+  message=$(json_field "$input" .message)
+  post "$url" "Claude: $name" "${message:-Claude Code needs your attention}" "$(env_value NTFY_TOKEN)"
+}
+
+case "$(uname -s)" in
+  Darwin) notify_darwin ;;
+  *) notify_linux ;;
+esac
+exit 0
