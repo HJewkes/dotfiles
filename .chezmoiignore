@@ -64,3 +64,13 @@ install-claude-shim.sh
 .claude/scripts/kwin-session-start-guard.py
 install-kwin-mcp.sh
 {{ end }}
+
+{{ if ne .chezmoi.os "darwin" }}
+# Opens the basement console sign-in page in this Mac's browser.
+.local/bin/console-login
+{{ end }}
+
+{{ if ne .machine "server" }}
+# Mints console sign-in links with the titan-console unit's environment.
+.local/bin/titan-console-login-link
+{{ end }}

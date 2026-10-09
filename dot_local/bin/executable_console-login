@@ -1,0 +1,14 @@
+#!/bin/sh
+# Signs this Mac's browser in to the basement console without printing the one-time link.
+set -eu
+host=${CONSOLE_LOGIN_HOST:-basement}
+ssh_cmd=${CONSOLE_LOGIN_SSH:-ssh}
+open_cmd=${CONSOLE_LOGIN_OPEN:-open}
+
+url=$($ssh_cmd "$host" .local/bin/titan-console-login-link | grep -m 1 -E '^https://[^ ]+/auth/login[?]code=' || true)
+if [ -z "$url" ]; then
+  echo "console-login: $host did not return a sign-in link" >&2
+  exit 1
+fi
+$open_cmd "$url"
+echo "console-login: opened the sign-in page; press Sign in within 10 minutes"
