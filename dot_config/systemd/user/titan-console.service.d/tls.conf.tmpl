@@ -1,0 +1,9 @@
+# HTTPS on the tailnet address with a tailscale cert (TP-1998, decisions item 128); owner writes stay off.
+{{- $ts := output "tailscale" "status" "--json" | fromJson }}
+{{- $fqdn := trimSuffix "." $ts.Self.DNSName }}
+[Service]
+Environment=TITAN_CONSOLE_HOST={{ index $ts.Self.TailscaleIPs 0 }}
+Environment=TITAN_CONSOLE_LAN_NAMES={{ $fqdn }}
+Environment=TITAN_CONSOLE_TLS_CERT=%h/.local/state/titan-console/tls/{{ $fqdn }}.crt
+Environment=TITAN_CONSOLE_TLS_KEY=%h/.local/state/titan-console/tls/{{ $fqdn }}.key
+UMask=0077

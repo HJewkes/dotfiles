@@ -1,0 +1,7 @@
+[Unit]
+Description=Delete ~/.cache/node-compile-cache files unused for 7 days (BS-28)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/find %h/.cache/node-compile-cache -type f -atime +7 -delete
+ExecStart=/usr/bin/find %h/.cache/node-compile-cache -mindepth 1 -type d -empty -delete

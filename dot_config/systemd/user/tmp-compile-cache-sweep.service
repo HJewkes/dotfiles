@@ -1,0 +1,6 @@
+[Unit]
+Description=Delete /tmp/node-compile-cache entries older than 6 hours (BS-28)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/find /tmp/node-compile-cache -mindepth 1 -mmin +360 -delete
