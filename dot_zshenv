@@ -6,3 +6,8 @@ if [[ "$OSTYPE" == linux* ]]; then
   export NODE_COMPILE_CACHE="$HOME/.cache/node-compile-cache"
   export npm_config_store_dir="$HOME/.local/share/pnpm/store"
 fi
+
+# Rootless dockerd socket for the docker SDK, which ignores CLI contexts (BS-30).
+if [[ -S /run/user/$UID/docker.sock ]]; then
+  export DOCKER_HOST="unix:///run/user/$UID/docker.sock"
+fi
