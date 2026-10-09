@@ -47,6 +47,7 @@ ICON_ACCT_DEFAULT=$(printf '\uf007')
 ICON_ACCT_AGENTS=$(printf '\U000f06a9')
 ICON_ACCT_PERSONAL=$(printf '\uf015')
 ICON_ACCT_WORKOUT=$(printf '\U000f01e6')
+ICON_ACCT_SERVER=$(printf '\U000f048b')
 ICON_GAUGE_EMPTY=$(printf '\U000f0873')
 ICON_GAUGE_LOW=$(printf '\U000f0875')
 ICON_GAUGE_MID=$(printf '\U000f029a')
@@ -394,7 +395,7 @@ fi
 # ── VISIBLE LENGTH HELPER ──────────────────────────────────────
 visible_len() {
     local stripped
-    stripped=$(echo -n "$1" | sed $'s/\033\[[0-9;]*m//g')
+    stripped=$(echo -n "$1" | sed -e $'s/\033\[[0-9;]*m//g' -e $'s/\033]8;[^\a]*\a//g')
     echo ${#stripped}
 }
 
@@ -482,6 +483,7 @@ account_label() {
         agents)   printf '%s' "$ICON_ACCT_AGENTS" ;;
         personal) printf '%s' "$ICON_ACCT_PERSONAL" ;;
         workout)  printf '%s' "$ICON_ACCT_WORKOUT" ;;
+        server)   printf '%s' "$ICON_ACCT_SERVER" ;;
         *)        printf '%s' "$1" ;;
     esac
 }
@@ -527,6 +529,15 @@ build_other_cells() {
     printf '%s' "$cells"
 }
 
+# OSC 8 trial: the link target carries the usage detail so iTerm shows it on hover.
+usage_link_url() {
+    local tag name five weekly age sev url="https://usage.invalid/${1}-5h-${2}pct-wk-${3}pct"
+    while IFS='|' read -r tag name five weekly age sev; do
+        [[ -n "$name" ]] && url+="/${name}-5h-${five}pct-wk-${weekly}pct-age-$((age / 60))m"
+    done <<< "$4"
+    printf '%s' "$url"
+}
+
 bar_5hr=$(pct_to_bar "$rate_5hr")
 bar_weekly=$(pct_to_bar "$rate_weekly")
 color_5hr=$(pct_to_color "$rate_5hr")
@@ -564,7 +575,8 @@ pill2_body="${blue_part}${teal_part}${gray_part} ${pct_color}${pct_int}% ${FG_SU
 pill2=" ${FG_BLUE}${ICON_LROUND}${BG_BLUE} ${model_part}${pill2_body}${FG_BLUE}${ICON_RROUND}${RST}"
 pill2_no_model=" ${FG_BLUE}${ICON_LROUND}${BG_BLUE} ${pill2_body}${FG_BLUE}${ICON_RROUND}${RST}"
 
-pill3=" ${FG_TEAL}${ICON_LROUND}${BG_TEAL}${FG_TEAL_DIM} ${current_usage}${others_part} ${RST}${FG_TEAL}${ICON_RROUND}${RST}"
+usage_url=$(usage_link_url "$account_name" "$rate_5hr" "$rate_weekly" "$other_rates")
+pill3=" \033]8;;${usage_url}\a${FG_TEAL}${ICON_LROUND}${BG_TEAL}${FG_TEAL_DIM} ${current_usage}${others_part} ${RST}${FG_TEAL}${ICON_RROUND}${RST}\033]8;;\a"
 
 # Pill 4: Session — combines time + ID
 pill4=" ${FG_FLAMINGO}${ICON_LROUND}${BG_FLAMINGO}${FG_FLAMINGO_DIM} ${session_time} ${FG_CRUST}${session_id} ${RST}${FG_FLAMINGO}${ICON_RROUND}${RST}"

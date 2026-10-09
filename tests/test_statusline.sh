@@ -87,6 +87,8 @@ for pair in 3540:none 3600:$CLOCK_1 18000:$CLOCK_5 46800:$CLOCK_ALERT 259200:$CL
     if [[ "$want" == none ]]; then
         PERSONAL_AGE=60 write_cache true
         fresh=$(render '')
+        # The OSC 8 hover target carries the age, so compare the visible text only.
+        out=$(sed $'s/\033]8;[^\a]*\a//g' <<< "$out") fresh=$(sed $'s/\033]8;[^\a]*\a//g' <<< "$fresh")
         if [[ "$out" == "$fresh" ]]; then echo "ok   shows no stale marker at ${age}s"; else echo "FAIL shows no stale marker at ${age}s"; echo "     $out"; FAILS=$((FAILS + 1)); fi
     else
         check "shows the clock for ${age}s" "$out" "$PERSONAL ▁▄ $want" yes
