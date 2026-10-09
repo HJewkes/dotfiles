@@ -56,6 +56,10 @@ install-claude-shim.sh
 {{ if eq .chezmoi.os "darwin" }}
 # Linux only; macOS gets ~/.local/bin from .zshrc and path_helper.
 .zshenv
+# Rootless Docker runs on the Linux server only (BS-30).
+.config/systemd/user/docker.service
+.config/environment.d/60-docker-rootless.conf
+.local/bin/dockerd-rootless.sh
 {{ end }}
 
 {{ if not (and (eq .chezmoi.os "linux") (eq .machine "server")) }}
@@ -71,6 +75,12 @@ install-kwin-mcp.sh
 {{ end }}
 
 {{ if ne .machine "server" }}
+# The console TLS drop-in reads the tailnet name from tailscale on basement (TP-1998).
+.config/systemd/user/titan-console.service.d
+# The host drift check reads the console checkout on basement (BS-29).
+.local/bin/env-drift-check
+.config/systemd/user/env-drift-check.service
+.config/systemd/user/env-drift-check.timer
 # Mints console sign-in links with the titan-console unit's environment.
 .local/bin/titan-console-login-link
 {{ end }}

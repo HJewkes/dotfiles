@@ -1,0 +1,18 @@
+[Unit]
+Description=titan-console (loopback only until TP-1998 tailscale HTTPS; decisions item 128)
+After=active-work.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/node %h/.local/share/titan-console/checkout/apps/console/dist/cli.js
+Environment=TITAN_CONSOLE_SEATS=titan-coord=tc,platform-coord=pc,design-coord=dc
+Environment=PATH=/usr/bin:%h/.local/bin:/bin:/usr/sbin:/sbin
+UMask=0077
+Restart=always
+RestartSec=5
+StandardOutput=append:%h/.local/state/titan-console/serve.out.log
+StandardError=append:%h/.local/state/titan-console/serve.err.log
+
+[Install]
+WantedBy=default.target

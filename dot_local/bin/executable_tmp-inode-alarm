@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# BS-28: warn before /tmp (a 1M-inode tmpfs) reaches the seats' 85% dispatch hold.
+set -uo pipefail
+
+STATE="$HOME/.local/state/tmp-inode-alarm"
+# The recipient lives outside the repo: its name is private.
+TO="${TMP_INODE_ALARM_TO:-$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/basement-alerts/to" 2>/dev/null)}"
+[[ -n "$TO" ]] || { echo "tmp-inode-alarm: no recipient configured" >&2; exit 2; }
+SPIKE_PCT=8
+REPEAT_SECONDS=3600
+mkdir -p "$STATE"
+
+pct=$(df --output=ipcent /tmp | tail -1 | tr -dc 0-9)
+now=$(date +%s)
+last=$(cat "$STATE/last-pct" 2>/dev/null || echo "$pct")
+echo "$pct" > "$STATE/last-pct"
+
+level=""
+if [ "$pct" -ge 72 ]; then level=72; elif [ "$pct" -ge 60 ]; then level=60; fi
+[ $((pct - last)) -ge "$SPIKE_PCT" ] && level="${level:+$level+}spike"
+[ -z "$level" ] && exit 0
+
+sent=$(cat "$STATE/sent-$level" 2>/dev/null || echo 0)
+[ $((now - sent)) -lt "$REPEAT_SECONDS" ] && exit 0
+echo "$now" > "$STATE/sent-$level"
+
+top=$(du -s --inodes /tmp/* /tmp/.[!.]* 2>/dev/null | sort -rn | head -6 | awk '{printf "%s %s; ", $2, $1}')
+reviews=$(ls -d /tmp/review-* 2>/dev/null | wc -l)
+agent-chat send "$TO" "tmp-inode-alarm: /tmp inodes at ${pct}% (level ${level}; was ${last}% 5 min ago; seats hold at 85%). Live /tmp/review-* checkouts: ${reviews}. Top: ${top}See the BS-28 tmp audit."
