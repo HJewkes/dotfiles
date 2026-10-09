@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Messages the alert recipient when this hosts node or pnpm drifts from titan-platforms canonical versions (BS-29, item 127).
+set -uo pipefail
+
+# The recipient lives outside the repo: its name is private.
+TO="${ENV_DRIFT_TO:-$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/basement-alerts/to" 2>/dev/null)}"
+[[ -n "$TO" ]] || { echo "env-drift-check: no recipient configured" >&2; exit 2; }
+CANON="${ENV_DRIFT_CANON:-$HOME/.local/share/titan-console/checkout}"
+
+out=$(cd "$CANON" && node scripts/env-doctor.mjs --host 2>&1)
+status=$?
+[[ $status -eq 0 ]] && exit 0
+
+agent-chat send "$TO" "env-drift-check: env-doctor --host exited ${status} on $(hostname) (canonical from $(git -C "$CANON" rev-parse --short HEAD)). Output: ${out}"

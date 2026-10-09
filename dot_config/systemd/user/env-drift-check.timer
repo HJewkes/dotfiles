@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily host toolchain drift check (BS-29)
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target

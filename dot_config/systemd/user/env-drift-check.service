@@ -1,0 +1,6 @@
+[Unit]
+Description=Alert when host node/pnpm drift from titan-platform canonical (BS-29)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/env-drift-check
