@@ -1,5 +1,9 @@
 {
   "agentPushNotifEnabled": true,
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
   "autoMode": {
     "allow": [
       "$defaults",
