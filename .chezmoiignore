@@ -56,6 +56,10 @@ install-claude-shim.sh
 {{ if eq .chezmoi.os "darwin" }}
 # Linux only; macOS gets ~/.local/bin from .zshrc and path_helper.
 .zshenv
+# Rootless Docker runs on the Linux server only (BS-30).
+.config/systemd/user/docker.service
+.config/environment.d/60-docker-rootless.conf
+.local/bin/dockerd-rootless.sh
 {{ end }}
 
 {{ if not (and (eq .chezmoi.os "linux") (eq .machine "server")) }}
