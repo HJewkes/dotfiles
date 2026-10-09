@@ -1,2 +1,8 @@
 # Linux only: non-interactive zsh (ssh commands, spawned agents) never reads .zshrc, so put ~/.local/bin on PATH here.
 [[ ":$PATH:" == *":$HOME/.local/bin:"* ]] || export PATH="$HOME/.local/bin:$PATH"
+
+# Linux only: keep Node's compile cache and the pnpm store off the 1M-inode /tmp tmpfs (BS-28).
+if [[ "$OSTYPE" == linux* ]]; then
+  export NODE_COMPILE_CACHE="$HOME/.cache/node-compile-cache"
+  export npm_config_store_dir="$HOME/.local/share/pnpm/store"
+fi

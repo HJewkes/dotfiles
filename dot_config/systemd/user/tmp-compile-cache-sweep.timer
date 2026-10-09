@@ -1,0 +1,9 @@
+[Unit]
+Description=Hourly sweep of stale /tmp/node-compile-cache entries
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=1h
+
+[Install]
+WantedBy=timers.target
