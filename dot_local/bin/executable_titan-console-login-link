@@ -1,0 +1,11 @@
+#!/bin/sh
+# Mints a one-time console sign-in link with the titan-console unit's own environment.
+set -eu
+unit_env=$(systemctl --user show titan-console --property=Environment --value)
+if [ -z "$unit_env" ]; then
+  echo "titan-console-login-link: the titan-console unit sets no environment" >&2
+  exit 1
+fi
+# The unit's values are space-free paths and names, so word splitting is the parse.
+# shellcheck disable=SC2086
+exec env $unit_env node "$HOME/.local/share/titan-console/checkout/apps/console/dist/cli.js" login-link
