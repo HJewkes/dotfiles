@@ -1,0 +1,7 @@
+[Unit]
+Description=titan-factory digest (BS-33)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/share/mise/shims/node %h/.local/share/titan-factory/deploy/titan-platform/products/factory/dist/bin.js digest
+Environment=PATH=%h/.local/share/mise/shims:%h/.local/bin:/usr/local/bin:/usr/bin:/bin

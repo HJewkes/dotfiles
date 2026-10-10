@@ -83,4 +83,12 @@ install-kwin-mcp.sh
 .config/systemd/user/env-drift-check.timer
 # Mints console sign-in links with the titan-console unit's environment.
 .local/bin/titan-console-login-link
+# Basement units: the digest timer (BS-33) and the mise node drop-ins (BS-29).
+.config/systemd/user/titan-factory-digest.service
+.config/systemd/user/titan-factory-digest.timer
+.config/systemd/user/active-work.service.d
+.config/systemd/user/agent-chat-burndown.service.d
+.config/systemd/user/agent-chat-seat-watchdog-pilot.service.d
+.config/systemd/user/agent-chat-seat-watchdog.service.d
+.config/systemd/user/session-miner-refresh.service.d
 {{ end }}
