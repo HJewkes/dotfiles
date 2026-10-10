@@ -22,11 +22,12 @@
 {{-   end -}}
 {{- end -}}
 {{- if ne .chezmoi.os "darwin" -}}
-{{- /* AppleEvents and osascript exist only on macOS. Stripped after the patch
-       merge so a copied private patch cannot bring them back. A push-based
-       Notification hook for headless hosts is planned separately. */ -}}
+{{- /* AppleEvents and osascript exist only on macOS. Reset after the patch
+       merge so a copied private patch cannot bring them back; the base
+       Notification hook pushes via claude-notify instead. */ -}}
 {{-   $_ := unset $settings.sandbox "allowAppleEvents" -}}
-{{-   $_ = unset $settings.hooks "Notification" -}}
+{{-   $notification := (includeTemplate "claude-settings-base.json" . | fromJson).hooks.Notification -}}
+{{-   $_ = set $settings.hooks "Notification" $notification -}}
 {{- /* The private patch wires iTerm's cc-status (a Mach-O binary) into every
        hook event; drop those groups so Linux hooks don't fail on each call. */ -}}
 {{-   $hooks := dict -}}
