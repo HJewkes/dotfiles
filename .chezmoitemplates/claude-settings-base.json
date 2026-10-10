@@ -72,6 +72,9 @@
       "Bash(agent-chat agent park *)",
       "Bash(gh api -X PUT repos/HJewkes/*/pulls/*/merge *)"
     ],
+    "ask": [
+      "Bash(agent-chat endorse:*)"
+    ],
     "defaultMode": "auto",
     "deny": [
       "EnterPlanMode",
