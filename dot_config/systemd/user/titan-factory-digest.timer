@@ -1,0 +1,10 @@
+[Unit]
+Description=titan-factory digest slots (BS-33)
+
+[Timer]
+# Slots 6, 12 and 18 America/Denver (digest/slots.ts); the run lands just after the slot hour so currentSlot picks it.
+OnCalendar=*-*-* 06,12,18:02:00 America/Denver
+Persistent=true
+
+[Install]
+WantedBy=timers.target
