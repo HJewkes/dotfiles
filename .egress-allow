@@ -1,0 +1,3 @@
+# Files allowed to carry an egress-scan hit: <glob> <rule-id> <reason with a task id>.
+# One entry per file and rule. Private terms are never allowable.
+dot_local/bin/executable_restic-nightly aw-data-path nightly restic backup source list names the active-work data dir, CC-948
