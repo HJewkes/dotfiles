@@ -18,7 +18,7 @@ Two rulesets on `~DEFAULT_BRANCH`. Bodies live in `templates/`, copied from the 
 
 | Ruleset | Rules | Bypass |
 |---|---|---|
-| `no-direct-push` | deletion, non_fast_forward, pull_request (0 approvals), required_status_checks (`check` pinned to GitHub Actions on the HJewkes/ci standard; the repo's real CI job names otherwise) | none |
+| `no-direct-push` | deletion, non_fast_forward, required_linear_history, pull_request (0 approvals), required_status_checks (`check` pinned to GitHub Actions on the HJewkes/ci standard; the repo's real CI job names otherwise) | none |
 | `outside-approval` | pull_request: 1 approval, dismiss_stale_reviews_on_push, require_last_push_approval | Repository admin (actor_id 5), `bypass_mode: pull_request` |
 
 Why each piece exists:
@@ -28,6 +28,7 @@ Why each piece exists:
 - **required_status_checks** is the "CI is green" half of rule 1. The names must be checks that run on every PR. A name that never reports on a PR blocks every merge.
 - **`integration_id` 15368** pins `check` to the GitHub Actions app (owner decision 2026-09-28). A commit status, or another app that posts a check named `check`, cannot satisfy the ruleset.
 - **deletion and non_fast_forward** stop anyone deleting or rewriting the default branch.
+- **required_linear_history** keeps merge commits off the default branch, so every PR lands as a squash or rebase (owner decision 275 D3, 2026-10-12, applied to all repos). Merge commits on PR branches, such as Shepherd's merge-onto restack, are unaffected.
 - **`outside-approval`** enforces rule 3. `last_push_approval` and dismissing stale reviews stop a third party from pushing new code after the owner approves.
 - **The admin `pull_request` bypass** lets the owner merge their own PRs without an approval, which nobody could give them. `pull_request` mode covers PR merges only, never a direct push.
 
