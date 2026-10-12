@@ -56,6 +56,9 @@ install-claude-shim.sh
 {{ if eq .chezmoi.os "darwin" }}
 # Linux only; macOS gets ~/.local/bin from .zshrc and path_helper.
 .zshenv
+# The Mac runs the trust sync from a LaunchAgent instead (item 198).
+.config/systemd/user/claude-trust-sync.service
+.config/systemd/user/claude-trust-sync.timer
 # Rootless Docker runs on the Linux server only (BS-30).
 .config/systemd/user/docker.service
 .config/environment.d/60-docker-rootless.conf

@@ -1,0 +1,6 @@
+[Unit]
+Description=Item 198: union Claude workspace trust across profiles (live sessions can overwrite .claude.json on exit)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.claude/scripts/claude-trust-sync.sh

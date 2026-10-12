@@ -4,7 +4,10 @@
 # Trust lives in `.claude.json` inside each config directory, so a folder you
 # trust under one profile still prompts under the others. This unions the
 # trusted paths across the default profile and every profile directory, so a
-# folder trusted anywhere is trusted everywhere.
+# folder trusted anywhere is trusted everywhere. Folders in
+# ~/.claude/trusted-folders.txt join the union too, so a new folder is trusted
+# before any profile has opened it. Private paths go in trusted-folders.local.txt,
+# which comes from the private overlay because this repo is public.
 #
 # Only the `hasTrustDialogAccepted` flag moves. Session history, costs and MCP
 # state stay per-profile, which is the point of having profiles at all.
@@ -16,6 +19,7 @@ PROFILE_ROOT="${CLAUDE_PROFILE_ROOT:-$HOME/.claude-profiles}"
 # The default profile keeps .claude.json beside ~/.claude, not inside it.
 # Only a CLAUDE_CONFIG_DIR profile nests the file within its own directory.
 DEFAULT_CONFIG="$HOME/.claude.json"
+TRUSTED_LISTS="${CLAUDE_TRUSTED_FOLDERS:-$HOME/.claude/trusted-folders.txt:$HOME/.claude/trusted-folders.local.txt}"
 DRY_RUN=0
 
 usage() {
@@ -23,7 +27,10 @@ usage() {
 usage: claude-trust-sync.sh [--dry-run] [--help]
 
 Unions workspace-trust decisions across the default Claude config directory and
-every profile under ~/.claude-profiles (override with CLAUDE_PROFILE_ROOT).
+every profile under ~/.claude-profiles (override with CLAUDE_PROFILE_ROOT),
+plus every folder listed in ~/.claude/trusted-folders.txt and
+~/.claude/trusted-folders.local.txt (override with CLAUDE_TRUSTED_FOLDERS, a
+colon-separated list of files): one path per line, ~ for home, # for comments.
 
   --dry-run   Report what would change without writing.
   --help      Show this message.
@@ -46,7 +53,8 @@ done
 
 command -v python3 >/dev/null 2>&1 || { echo "python3 is required" >&2; exit 1; }
 
-DRY_RUN="$DRY_RUN" DEFAULT_CONFIG="$DEFAULT_CONFIG" PROFILE_ROOT="$PROFILE_ROOT" python3 <<'PY'
+DRY_RUN="$DRY_RUN" DEFAULT_CONFIG="$DEFAULT_CONFIG" PROFILE_ROOT="$PROFILE_ROOT" \
+    TRUSTED_LISTS="$TRUSTED_LISTS" python3 <<'PY'
 import glob, json, os, sys, tempfile, time
 
 dry = os.environ['DRY_RUN'] == '1'
@@ -63,11 +71,19 @@ for path in configs:
         print(f'skipping unreadable {path}: {err}', file=sys.stderr)
         warnings += 1
 
-if len(loaded) < 2:
-    print('nothing to sync: fewer than two readable configs')
+if not loaded:
+    print('nothing to sync: no readable configs')
     sys.exit(2 if warnings else 0)
 
+def listed_folders(path):
+    if not os.path.exists(path):
+        return set()
+    lines = (line.strip() for line in open(path))
+    return {os.path.expanduser(line) for line in lines if line and not line.startswith('#')}
+
 union = set()
+for list_path in os.environ['TRUSTED_LISTS'].split(':'):
+    union |= listed_folders(list_path)
 for _, data in loaded:
     for p, v in (data.get('projects') or {}).items():
         if isinstance(v, dict) and v.get('hasTrustDialogAccepted'):
