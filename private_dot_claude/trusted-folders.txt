@@ -1,0 +1,22 @@
+# Folders every Claude profile trusts, read by scripts/claude-trust-sync.sh.
+# Trust is keyed on the git root: a folder outside a repo covers its subfolders
+# but not repos nested inside it, so each repo under ~/projects is listed too.
+# Private paths go in trusted-folders.local.txt via the private overlay.
+~/projects
+~/projects/acemate
+~/projects/active-work
+~/projects/agent-chat
+~/projects/audiobook
+~/projects/ci
+~/projects/codewatch
+~/projects/demo-video-tooling
+~/projects/dotfiles
+~/projects/herald
+~/projects/home_assistant
+~/projects/relay
+~/projects/titan-design
+~/projects/titan-platform
+~/projects/voltra-node-sdk
+~/projects/voltra-private
+~/projects/voltras-mcp
+~/projects/workout-analytics
