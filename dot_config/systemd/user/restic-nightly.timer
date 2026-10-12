@@ -1,0 +1,9 @@
+[Unit]
+Description=Nightly 02:30 restic backup (BS-6)
+
+[Timer]
+OnCalendar=*-*-* 02:30
+Persistent=true
+
+[Install]
+WantedBy=timers.target

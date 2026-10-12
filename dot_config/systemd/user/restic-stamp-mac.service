@@ -1,0 +1,7 @@
+[Unit]
+Description=BS-23 stamp the Mac's latest nightly restic snapshot time
+RequiresMountsFor=/mnt/unas-backups
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/restic-stamp-mac
