@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# BS-6: probe basement every 5 min, write status.json, and push ntfy only when the set of failing checks changes.
+# BS-6, BS-39: probe basement every 5 min, write status.json, and push ntfy only when the set of failing checks changes.
 set -uo pipefail
 export PATH="$HOME/.local/share/mise/shims:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
 STATE="$HOME/.local/state/basement-health"
 RESTIC="$HOME/.local/state/restic"
+UNAS="${BASEMENT_HEALTH_UNAS:-/mnt/unas-backups}"
+TOKEN_WARN_DAYS=7
+# A timer this far past its next run has stopped firing.
+TIMER_GRACE_SECONDS=600
 mkdir -p "$STATE"
 failing=()
 details=()
@@ -41,7 +45,7 @@ check_capacity() {
 
 check_backups() {
   # A real read: since the 10-11 export move the UNAS denies access() probes on files it lets us open.
-  timeout 20 head -c 1 /mnt/unas-backups/restic/config >/dev/null 2>&1 || fail unas-mount "/mnt/unas-backups not readable"
+  timeout 20 head -c 1 "$UNAS/restic/config" >/dev/null 2>&1 || fail unas-mount "$UNAS not readable"
   check_stamp backup-basement "$RESTIC/last-success-basement" 26
   check_stamp backup-mac "$RESTIC/last-success-mac" 30
   check_stamp restic-check "$RESTIC/last-check-ok" $((8 * 24))
@@ -54,6 +58,35 @@ check_thermals() {
   [ -z "$gpu" ] || [ "$gpu" -lt 85 ] || fail gpu-temp "GPU at ${gpu}C"
   cpu=$(cat /sys/class/hwmon/hwmon*/temp*_input 2>/dev/null | sort -n | tail -1)
   [ -z "$cpu" ] || [ $((cpu / 1000)) -lt 90 ] || fail cpu-temp "hottest sensor at $((cpu / 1000))C"
+}
+
+claude_refresh_days() {
+  jq -r '.claudeAiOauth.refreshTokenExpiresAt // empty | (. / 1000 - now) / 86400 | floor' "$1" 2>/dev/null
+}
+
+check_tokens() {
+  local f label days expiring=()
+  for f in "$HOME/.claude/.credentials.json" "$HOME"/.claude-profiles/*/.credentials.json; do
+    [ -f "$f" ] || continue
+    days=$(claude_refresh_days "$f")
+    [ -n "$days" ] && [ "$days" -lt "$TOKEN_WARN_DAYS" ] || continue
+    label=$(basename "$(dirname "$f")"); [ "$label" = .claude ] && label=default
+    expiring+=("$label in ${days}d")
+  done
+  [ ${#expiring[@]} -eq 0 ] || fail token-expiry "Claude refresh token expiring: $(IFS=,; echo "${expiring[*]}")"
+  timeout 20 gh auth status > /dev/null 2>&1 || fail gh-auth "gh auth status failing"
+}
+
+# The seat watchdog covers seat heartbeats; this catches it, or any timer, no longer firing.
+check_timers() {
+  local overdue inactive t
+  overdue=$(systemctl --user list-timers --output=json 2>/dev/null \
+    | jq -r --argjson grace "$TIMER_GRACE_SECONDS" \
+      '.[] | select((.next // 0) > 0 and .next / 1000000 < now - $grace) | .unit' | paste -sd, -)
+  inactive=$(for t in $(systemctl --user list-unit-files --type=timer --state=enabled --no-legend | awk '{print $1}'); do
+    systemctl --user is-active -q "$t" || echo "$t"
+  done | paste -sd, -)
+  [ -z "$overdue$inactive" ] || fail stale-timers "overdue: ${overdue:-none}; enabled but not running: ${inactive:-none}"
 }
 
 write_status() {
@@ -84,5 +117,7 @@ check_services
 check_capacity
 check_thermals
 check_backups
+check_tokens
+check_timers
 if [ ${#failing[@]} -eq 0 ]; then write_status true; else write_status false; fi
 push_on_change
