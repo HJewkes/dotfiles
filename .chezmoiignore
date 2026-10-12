@@ -80,6 +80,10 @@ install-kwin-mcp.sh
 {{ if ne .machine "server" }}
 # The console TLS drop-in reads the tailnet name from tailscale on basement (TP-1998).
 .config/systemd/user/titan-console.service.d
+# Basement health check every 5 min (BS-6, BS-39).
+.local/bin/basement-health
+.config/systemd/user/basement-health.service
+.config/systemd/user/basement-health.timer
 # The host drift check reads the console checkout on basement (BS-29).
 .local/bin/env-drift-check
 .config/systemd/user/env-drift-check.service
