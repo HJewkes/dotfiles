@@ -3,7 +3,10 @@
 {{- $machine := promptChoiceOnce . "machine" "Machine type" (list "personal" "work" "server") -}}
 {{- $awDataDir := "" -}}
 {{- $macHost := "" -}}
-{{- if eq $machine "server" -}}
+{{- $profiles := (include ".chezmoidata/profiles.toml" | fromToml).profiles -}}
+{{- $roleData := dict "profiles" $profiles "machine" $machine "extraRoles" (get . "extraRoles" | default list) "withoutRoles" (get . "withoutRoles" | default list) -}}
+{{- $roles := includeTemplate "roles" $roleData | fromJson -}}
+{{- if has "backup-repo-host" $roles -}}
 {{-   $awDataDir = promptStringOnce . "awDataDir" "active-work data dir to back up (may use $HOME)" -}}
 {{-   $macHost = promptStringOnce . "macHost" "Mac hostname whose restic snapshots to stamp" -}}
 {{- end }}

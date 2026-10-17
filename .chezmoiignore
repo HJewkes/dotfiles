@@ -1,3 +1,7 @@
+{{ $roles := includeTemplate "roles" . | fromJson }}
+{{ if ne .chezmoi.os "linux" }}
+{{ $roles = without $roles "agent-desktop" }}
+{{ end }}
 README.md
 LICENSE.md
 Brewfile
@@ -65,8 +69,8 @@ install-claude-shim.sh
 .local/bin/dockerd-rootless.sh
 {{ end }}
 
-{{ if not (and (eq .chezmoi.os "linux") (eq .machine "server")) }}
-# kwin-mcp (KDE computer use for agents) runs on the Linux server only.
+{{ if not (has "agent-desktop" $roles) }}
+# kwin-mcp (KDE computer use for agents) requires Linux and agent-desktop.
 .local/share/kwin-mcp
 .claude/scripts/kwin-session-start-guard.py
 install-kwin-mcp.sh
@@ -77,7 +81,7 @@ install-kwin-mcp.sh
 .local/bin/console-login
 {{ end }}
 
-{{ if ne .machine "server" }}
+{{ if not (has "factory-host" $roles) }}
 # The tmp inode alarm runs on basement only.
 .local/bin/tmp-inode-alarm
 .config/systemd/user/tmp-inode-alarm.service
@@ -102,6 +106,11 @@ install-kwin-mcp.sh
 .config/systemd/user/agent-chat-seat-watchdog-pilot.service.d
 .config/systemd/user/agent-chat-seat-watchdog.service.d
 .config/systemd/user/session-miner-refresh.service.d
+# Basement units resolve node through mise shims (BS-35).
+.config/mise
+{{ end }}
+
+{{ if not (has "backup-repo-host" $roles) }}
 # Restic backups to the UNAS mount (BS-6, BS-23) and the encrypted repo password.
 .config/restic
 .local/bin/restic-nightly
@@ -113,6 +122,4 @@ install-kwin-mcp.sh
 .config/systemd/user/restic-check.timer
 .config/systemd/user/restic-stamp-mac.service
 .config/systemd/user/restic-stamp-mac.timer
-# Basement units resolve node through mise shims (BS-35).
-.config/mise
 {{ end }}
