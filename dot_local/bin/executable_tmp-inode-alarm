@@ -17,7 +17,8 @@ echo "$pct" > "$STATE/last-pct"
 
 level=""
 if [ "$pct" -ge 72 ]; then level=72; elif [ "$pct" -ge 60 ]; then level=60; fi
-[ $((pct - last)) -ge "$SPIKE_PCT" ] && level="${level:+$level+}spike"
+# A spike only matters once it is already high; below 60% it was noise (BS-6 covers /tmp too).
+[ -n "$level" ] && [ $((pct - last)) -ge "$SPIKE_PCT" ] && level="$level+spike"
 [ -z "$level" ] && exit 0
 
 sent=$(cat "$STATE/sent-$level" 2>/dev/null || echo 0)
