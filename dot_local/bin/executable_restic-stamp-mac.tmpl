@@ -3,7 +3,7 @@
 set -euo pipefail
 export RESTIC_REPOSITORY=/mnt/unas-backups/restic
 export RESTIC_PASSWORD_FILE="$HOME/.config/restic/unas.pass"
-mac_host=Henrys-MBP.localdomain
+mac_host={{ .macHost | quote }}
 state="$HOME/.local/state/restic"
 
 mountpoint -q /mnt/unas-backups || { echo "UNAS not mounted" >&2; exit 75; }
