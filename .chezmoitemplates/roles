@@ -1,0 +1,9 @@
+{{- if not (hasKey .profiles .machine) -}}
+{{-   fail (printf "unknown machine: %s" .machine) -}}
+{{- end -}}
+{{- $roles := index .profiles .machine -}}
+{{- $roles = concat $roles (get . "extraRoles" | default list) | uniq -}}
+{{- range (get . "withoutRoles" | default list) -}}
+{{-   $roles = without $roles . -}}
+{{- end -}}
+{{- $roles | toJson -}}

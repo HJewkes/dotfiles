@@ -1,3 +1,4 @@
+{{- $roles := includeTemplate "roles" . | fromJson -}}
 {{- /* Base lives in .chezmoitemplates so it stays plain JSON — it contains
        backticks, which a Go raw-string literal cannot hold. */ -}}
 {{- $patchPath := joinPath .chezmoi.homeDir ".config/chezmoi/claude-settings-patch.json" -}}
@@ -5,21 +6,21 @@
 {{- if stat $patchPath -}}{{- $patch = include $patchPath | fromJson -}}{{- end -}}
 {{- $base := includeTemplate "claude-settings-base.json" . | fromJson -}}
 {{- $settings := mergeOverwrite $base $patch -}}
-{{- if eq .machine "server" -}}
+{{- $server := includeTemplate "claude-settings-server.json" . | fromJson -}}
+{{- if has "factory-host" $roles -}}
 {{- /* Appended rather than merged so a copied private patch keeps its own
        environment entries alongside the host description. */ -}}
-{{-   $server := includeTemplate "claude-settings-server.json" . | fromJson -}}
 {{-   $environment := get $settings.autoMode "environment" | default (list "$defaults") -}}
 {{-   $_ := set $settings.autoMode "environment" (concat $environment $server.autoMode.environment) -}}
+{{- end -}}
 {{- /* kwin-mcp tools that run commands, reach the session bus or read the
        clipboard are denied; session_start is gated by a hook. Appended after
        the patch merge so a private patch cannot drop them. */ -}}
-{{-   if eq .chezmoi.os "linux" -}}
-{{-     $deny := get $settings.permissions "deny" | default list -}}
-{{-     $_ = set $settings.permissions "deny" (concat $deny $server.kwin.deny) -}}
-{{-     $preToolUse := get $settings.hooks "PreToolUse" | default list -}}
-{{-     $_ = set $settings.hooks "PreToolUse" (concat $preToolUse $server.kwin.PreToolUse) -}}
-{{-   end -}}
+{{- if and (eq .chezmoi.os "linux") (has "agent-desktop" $roles) -}}
+{{-   $deny := get $settings.permissions "deny" | default list -}}
+{{-   $_ := set $settings.permissions "deny" (concat $deny $server.kwin.deny) -}}
+{{-   $preToolUse := get $settings.hooks "PreToolUse" | default list -}}
+{{-   $_ = set $settings.hooks "PreToolUse" (concat $preToolUse $server.kwin.PreToolUse) -}}
 {{- end -}}
 {{- if ne .chezmoi.os "darwin" -}}
 {{- /* AppleEvents and osascript exist only on macOS. Reset after the patch
@@ -32,7 +33,7 @@
        hook event; drop those groups so Linux hooks don't fail on each call. */ -}}
 {{-   $hooks := dict -}}
 {{-   range $event, $groups := $settings.hooks -}}
-{{-     $kept := list -}}
+{{-   $kept := list -}}
 {{-     range $groups -}}
 {{-       if not (contains "iterm2/cc-status" (toJson .)) -}}{{- $kept = append $kept . -}}{{- end -}}
 {{-     end -}}

@@ -1,0 +1,5 @@
+# S1a preserves current behavior: work temporarily has personal's roles.
+[profiles]
+server = ["base", "owner-personal", "fleet", "claude-multi-account", "factory-host", "backup-repo-host", "backup-source", "container-host", "agent-desktop", "private-overlay"]
+personal = ["base", "owner-personal", "fleet", "claude-multi-account", "factory-client", "backup-source", "private-overlay"]
+work = ["base", "owner-personal", "fleet", "claude-multi-account", "factory-client", "backup-source", "private-overlay"]
