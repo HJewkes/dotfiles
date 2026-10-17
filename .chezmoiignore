@@ -109,4 +109,6 @@ install-kwin-mcp.sh
 .config/systemd/user/restic-check.timer
 .config/systemd/user/restic-stamp-mac.service
 .config/systemd/user/restic-stamp-mac.timer
+# Basement units resolve node through mise shims (BS-35).
+.config/mise
 {{ end }}
