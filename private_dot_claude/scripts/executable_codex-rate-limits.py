@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import selectors
+import signal
 import shlex
 import subprocess
 import sys
@@ -46,13 +47,13 @@ def command(config):
             " ".join(shlex.quote(arg) for arg in args)]
 
 
-def source_output(args):
-    child = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+def source_output(args, timeout_seconds=12):
+    child = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
     try:
         with selectors.DefaultSelector() as selector:
             selector.register(child.stdout, selectors.EVENT_READ)
             output = b""
-            deadline = time.monotonic() + 12
+            deadline = time.monotonic() + timeout_seconds
             while time.monotonic() < deadline:
                 if not selector.select(max(0, deadline - time.monotonic())):
                     break
@@ -64,9 +65,14 @@ def source_output(args):
                     break
         return None
     finally:
-        if child.poll() is None:
-            child.kill()
-        child.wait()
+        try:
+            os.killpg(child.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        try:
+            child.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            pass
         child.stdout.close()
 
 

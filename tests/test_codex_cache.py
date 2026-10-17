@@ -3,6 +3,9 @@ from pathlib import Path
 import json
 import tempfile
 import unittest
+import os
+import sys
+import time
 from unittest.mock import patch
 import contextlib
 import io
@@ -10,6 +13,7 @@ import io
 SOURCE = Path(__file__).resolve().parents[1] / 'private_dot_claude/scripts/executable_codex-rate-limits.py'
 spec = importlib.util.spec_from_file_location('codex_cache', SOURCE)
 cache = importlib.util.module_from_spec(spec)
+sys.dont_write_bytecode = True
 spec.loader.exec_module(cache)
 
 
@@ -68,6 +72,32 @@ class CodexCacheTest(unittest.TestCase):
         self.assertNotIn('unknown', cache.cached_display(config, record, 1000.5))
         changed = {**config, 'argv': ['reader', '--expected-account-id', 'fixture-new']}
         self.assertIn('|unknown|unknown||', cache.cached_display(changed, record, 1000.5))
+
+    def test_source_timeout_reaps_owned_descendants_even_after_parent_exit(self):
+        for parent_exits in [False, True]:
+            with self.subTest(parent_exits=parent_exits), tempfile.TemporaryDirectory() as root:
+                pid_file = Path(root) / 'pid'
+                child_script = "import time; time.sleep(120)"
+                wrapper = "import subprocess,sys,time; from pathlib import Path; child=subprocess.Popen([sys.executable,'-c',sys.argv[2]]); Path(sys.argv[1]).write_text(str(child.pid)); " + ("sys.exit(0)" if parent_exits else "time.sleep(120)")
+                pid = None
+                try:
+                    self.assertIsNone(cache.source_output([sys.executable, '-c', wrapper, str(pid_file), child_script], timeout_seconds=0.2))
+                    pid = int(pid_file.read_text())
+                    time.sleep(0.05)
+                    stat = Path(f'/proc/{pid}/stat')
+                    if stat.exists():
+                        self.assertEqual(stat.read_text().split()[2], 'Z', 'owned descendant still runs')
+                    else:
+                        with self.assertRaises(ProcessLookupError):
+                            os.kill(pid, 0)
+                finally:
+                    if pid is None and pid_file.exists():
+                        pid = int(pid_file.read_text())
+                    if pid is not None:
+                        try:
+                            os.kill(pid, 9)
+                        except ProcessLookupError:
+                            pass
 
     def test_default_main_does_not_launch_a_process(self):
         with tempfile.TemporaryDirectory() as root:

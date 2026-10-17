@@ -1,6 +1,7 @@
 .agents/skills/checking-gmail/SKILL.md
 .claude/scripts/auth-remaining.sh
 .claude/scripts/claude-trust-sync.sh
+.claude/scripts/codex-rate-limits.py
 .claude/scripts/hook-post-tool.sh
 .claude/scripts/hook-pre-tool.sh
 .claude/scripts/hook-stop.sh
