@@ -243,6 +243,7 @@ rate_data=$("${STATUSLINE_RATE_LIMITS:-$HOME/.claude/scripts/rate-limits.sh}" 2>
 IFS='|' read -r rate_5hr rate_weekly rate_5hr_reset rate_weekly_reset \
     rate_scoped rate_scoped_model rate_weekly_sev rate_scoped_sev rate_age <<< "${rate_data%%$'\n'*}"
 other_rates=$(sed -n '/^other|/p' <<< "$rate_data")
+codex_data=$("${STATUSLINE_CODEX_RATE_LIMITS:-$HOME/.claude/scripts/codex-rate-limits.py}" 2>/dev/null)
 [[ -z "$rate_5hr" ]] && rate_5hr="unknown"
 [[ -z "$rate_weekly" ]] && rate_weekly="unknown"
 
@@ -529,6 +530,19 @@ build_other_cells() {
     printf '%s' "$cells"
 }
 
+# Codex has its own freshness contract; never use Claude's hour threshold.
+build_codex_cell() {
+    local tag name five weekly age tail
+    IFS='|' read -r tag name five weekly age tail <<< "$1"
+    if [[ ! "$name" =~ ^[A-Za-z0-9_.-]{1,64}$ || "$name" == sk-* ]]; then
+        name="default" five="unknown" weekly="unknown"
+    fi
+    if [[ "$1" != *\| || "$tag" != codex || "$five" != <0-100> || "$weekly" != <0-100> || "$age" != <0-900> || -n "$tail" || "$1" == *$'\n'* ]]; then
+        five="unknown" weekly="unknown"
+    fi
+    printf ' codex %s %s%s' "$name" "$(pct_to_bar "$five")" "$(pct_to_bar "$weekly")"
+}
+
 # OSC 8 trial: the link target carries the usage detail so iTerm shows it on hover.
 usage_link_url() {
     local tag name five weekly age sev url="https://usage.invalid/${1}-5h-${2}pct-wk-${3}pct"
@@ -564,7 +578,7 @@ effort_label=$(effort_gauge "$effort" "$FG_CRUST")
 stale_label=$(stale_age_label "$rate_age")
 
 # The separator marks everything before it as the active account.
-other_cells=$(build_other_cells "$other_rates")
+other_cells="$(build_other_cells "$other_rates")$(build_codex_cell "$codex_data")"
 others_part=""
 [[ -n "$other_cells" ]] && others_part=" ${FG_OVERLAY}│${FG_TEAL_DIM}${other_cells}"
 current_usage="$(account_label "$account_name") ${bar_5hr}${bar_weekly}${bar_scoped}${rate_pct_display}${stale_label}"
