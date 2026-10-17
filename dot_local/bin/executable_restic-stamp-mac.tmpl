@@ -3,12 +3,16 @@
 set -euo pipefail
 export RESTIC_REPOSITORY=/mnt/unas-backups/restic
 export RESTIC_PASSWORD_FILE="$HOME/.config/restic/unas.pass"
-mac_host={{ .macHost | quote }}
+mac_host={{ get . "macHost" | default "" | quote }}
 state="$HOME/.local/state/restic"
 
 mountpoint -q /mnt/unas-backups || { echo "UNAS not mounted" >&2; exit 75; }
-taken=$(restic snapshots --no-lock --host "$mac_host" --tag nightly --latest 1 --json | jq -r 'max_by(.time) | .time // empty')
-[ -n "$taken" ] || { echo "no nightly snapshot for $mac_host" >&2; exit 1; }
+# Any host but this one is the Mac: macOS renames itself, and a pinned name then misses a good
+# snapshot. mac_host only breaks a tie, so a stale name can never hide a newer snapshot.
+taken=$(restic snapshots --no-lock --tag nightly --json \
+  | jq -r --arg self "$(hostname)" --arg mac "$mac_host" \
+    'map(select(.hostname != $self)) | max_by([.time, .hostname == $mac]) | .time // empty')
+[ -n "$taken" ] || { echo "no nightly snapshot from a host other than $(hostname)" >&2; exit 1; }
 mkdir -p "$state"
 echo "$taken" > "$state/last-success-mac"
 touch -d "$taken" "$state/last-success-mac"
