@@ -20,5 +20,7 @@ encryption = "age"
     machine = {{ $machine | quote }}
 {{- if $awDataDir }}
     awDataDir = {{ $awDataDir | quote }}
+{{- end }}
+{{- if $macHost }}
     macHost = {{ $macHost | quote }}
 {{- end }}
