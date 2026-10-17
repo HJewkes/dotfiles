@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# BS-23 weekly integrity check of the UNAS restic repo; a stale or missing last-check-ok stamp means it failed.
+set -euo pipefail
+export RESTIC_REPOSITORY=/mnt/unas-backups/restic
+export RESTIC_PASSWORD_FILE="$HOME/.config/restic/unas.pass"
+state="$HOME/.local/state/restic"
+
+mountpoint -q /mnt/unas-backups || { echo "UNAS not mounted" >&2; exit 75; }
+mkdir -p "$state"
+rm -f "$state/last-check-ok"
+restic check --retry-lock 1h --read-data-subset=5%
+date -Is > "$state/last-check-ok"

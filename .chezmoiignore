@@ -94,4 +94,15 @@ install-kwin-mcp.sh
 .config/systemd/user/agent-chat-seat-watchdog-pilot.service.d
 .config/systemd/user/agent-chat-seat-watchdog.service.d
 .config/systemd/user/session-miner-refresh.service.d
+# Restic backups to the UNAS mount (BS-6, BS-23) and the encrypted repo password.
+.config/restic
+.local/bin/restic-nightly
+.local/bin/restic-check
+.local/bin/restic-stamp-mac
+.config/systemd/user/restic-nightly.service
+.config/systemd/user/restic-nightly.timer
+.config/systemd/user/restic-check.service
+.config/systemd/user/restic-check.timer
+.config/systemd/user/restic-stamp-mac.service
+.config/systemd/user/restic-stamp-mac.timer
 {{ end }}

@@ -1,0 +1,9 @@
+[Unit]
+Description=BS-6 nightly restic backup to the UNAS (decisions.md item 71)
+RequiresMountsFor=/mnt/unas-backups
+
+[Service]
+Type=oneshot
+Nice=10
+IOSchedulingClass=idle
+ExecStart=%h/.local/bin/restic-nightly

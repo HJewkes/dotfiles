@@ -1,0 +1,9 @@
+[Unit]
+Description=BS-23 stamp the Mac's nightly restic snapshot (after its 02:45 run, and through the day)
+
+[Timer]
+OnCalendar=*-*-* 04,10,16,22:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

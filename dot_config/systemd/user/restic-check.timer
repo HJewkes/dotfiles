@@ -1,0 +1,9 @@
+[Unit]
+Description=BS-23 weekly restic check, Sunday after the nightly runs
+
+[Timer]
+OnCalendar=Sun *-*-* 05:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

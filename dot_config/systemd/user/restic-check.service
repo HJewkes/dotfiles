@@ -1,0 +1,9 @@
+[Unit]
+Description=BS-23 weekly restic check of the UNAS repo (5% data subset)
+RequiresMountsFor=/mnt/unas-backups
+
+[Service]
+Type=oneshot
+Nice=10
+IOSchedulingClass=idle
+ExecStart=%h/.local/bin/restic-check
