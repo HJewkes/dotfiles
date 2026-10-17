@@ -78,6 +78,10 @@ install-kwin-mcp.sh
 {{ end }}
 
 {{ if ne .machine "server" }}
+# The tmp inode alarm runs on basement only.
+.local/bin/tmp-inode-alarm
+.config/systemd/user/tmp-inode-alarm.service
+.config/systemd/user/tmp-inode-alarm.timer
 # The console TLS drop-in reads the tailnet name from tailscale on basement (TP-1998).
 .config/systemd/user/titan-console.service.d
 # Basement health check every 5 min (BS-6, BS-39).

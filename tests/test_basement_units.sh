@@ -31,6 +31,7 @@ encryption = "age"
     email = "test@example.com"
     machine = "$1"
     awDataDir = "$AW_DATA_DIR"
+    macHost = "test-mac.example"
 CONF
 }
 
@@ -61,6 +62,7 @@ for u in $UNITS; do
     done
     check "$u script is executable" '[ -x "$TMP/server/.local/bin/$u" ]'
 done
+check "restic-stamp-mac renders the macHost data" 'grep -qxF "mac_host=\"test-mac.example\"" "$TMP/server/.local/bin/restic-stamp-mac"'
 check "repo password decrypts to the live file" 'cmp -s "$TMP/server/.config/restic/unas.pass" "$HOME/.config/restic/unas.pass"'
 
 # Content, not mode: the live restic-nightly is 0755 and chezmoi's umask renders 0775.

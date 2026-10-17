@@ -2,8 +2,10 @@
 {{- $email := promptStringOnce . "email" "Git author email" -}}
 {{- $machine := promptChoiceOnce . "machine" "Machine type" (list "personal" "work" "server") -}}
 {{- $awDataDir := "" -}}
+{{- $macHost := "" -}}
 {{- if eq $machine "server" -}}
 {{-   $awDataDir = promptStringOnce . "awDataDir" "active-work data dir to back up (may use $HOME)" -}}
+{{-   $macHost = promptStringOnce . "macHost" "Mac hostname whose restic snapshots to stamp" -}}
 {{- end }}
 
 encryption = "age"
@@ -18,4 +20,5 @@ encryption = "age"
     machine = {{ $machine | quote }}
 {{- if $awDataDir }}
     awDataDir = {{ $awDataDir | quote }}
+    macHost = {{ $macHost | quote }}
 {{- end }}
