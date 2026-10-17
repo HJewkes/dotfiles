@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# BS-6 nightly backup of basement's dev state to the UNAS restic repo (decisions.md item 71).
+set -euo pipefail
+export RESTIC_REPOSITORY=/mnt/unas-backups/restic
+export RESTIC_PASSWORD_FILE="$HOME/.config/restic/unas.pass"
+
+mountpoint -q /mnt/unas-backups || { echo "UNAS not mounted" >&2; exit 75; }
+
+rounds="$HOME/.cache/dc-rounds"
+restic backup --tag nightly --exclude node_modules --exclude .pnpm-store \
+  --exclude "$rounds/**/dist" --exclude "$rounds/**/storybook-static" --exclude "$rounds/**/.git" \
+  "$rounds" \
+  "$HOME/.agent-chat" \
+  "$HOME/.claude-profiles" \
+  "$HOME/.claude/projects" \
+  "$HOME/.local/state/titan-factory" \
+  {{ .awDataDir | quote }} \
+  "$HOME/active-work-pilot" \
+  "$HOME/projects"
+
+restic forget --host "$(hostname)" --tag nightly --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune
+
+# BS-23: the health check alerts when this stamp is older than 26 h.
+mkdir -p "$HOME/.local/state/restic"
+date -Is > "$HOME/.local/state/restic/last-success-basement"

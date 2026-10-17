@@ -1,0 +1,7 @@
+[Unit]
+Description=BS-6 basement health check (status.json, ntfy on change)
+
+[Service]
+Type=oneshot
+TimeoutStartSec=120
+ExecStart=%h/.local/bin/basement-health

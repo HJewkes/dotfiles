@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# BS-23: stamp the Mac's latest nightly snapshot time so the health check can alert on a stale Mac backup.
+set -euo pipefail
+export RESTIC_REPOSITORY=/mnt/unas-backups/restic
+export RESTIC_PASSWORD_FILE="$HOME/.config/restic/unas.pass"
+mac_host=Henrys-MBP.localdomain
+state="$HOME/.local/state/restic"
+
+mountpoint -q /mnt/unas-backups || { echo "UNAS not mounted" >&2; exit 75; }
+taken=$(restic snapshots --no-lock --host "$mac_host" --tag nightly --latest 1 --json | jq -r 'max_by(.time) | .time // empty')
+[ -n "$taken" ] || { echo "no nightly snapshot for $mac_host" >&2; exit 1; }
+mkdir -p "$state"
+echo "$taken" > "$state/last-success-mac"
+touch -d "$taken" "$state/last-success-mac"

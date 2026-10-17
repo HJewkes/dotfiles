@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# BS-6, BS-39: probe basement every 5 min, write status.json, and push ntfy only when the set of failing checks changes.
+set -uo pipefail
+export PATH="$HOME/.local/share/mise/shims:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
+STATE="$HOME/.local/state/basement-health"
+RESTIC="$HOME/.local/state/restic"
+UNAS="${BASEMENT_HEALTH_UNAS:-/mnt/unas-backups}"
+TOKEN_WARN_DAYS=7
+# A timer this far past its next run has stopped firing.
+TIMER_GRACE_SECONDS=600
+mkdir -p "$STATE"
+failing=()
+details=()
+
+fail() { failing+=("$1"); details+=("$1: $2"); }
+
+age_hours() { echo $(( ($(date +%s) - $(stat -c %Y "$1" 2>/dev/null || echo 0)) / 3600 )); }
+
+check_stamp() {
+  local name=$1 file=$2 max_h=$3
+  [ -e "$file" ] || { fail "$name" "no stamp at $file"; return; }
+  local h; h=$(age_hours "$file")
+  [ "$h" -le "$max_h" ] || fail "$name" "${h}h old (max ${max_h}h)"
+}
+
+check_services() {
+  agent-chat service status 2>/dev/null | grep -q "^socket *up" || fail broker "agent-chat socket not up"
+  local u
+  for u in titan-console active-work titan-factory; do
+    systemctl --user is-active -q "$u.service" || fail "$u" "service not active"
+  done
+  curl -fsS --max-time 5 http://localhost:7410/health > /dev/null 2>&1 || fail shepherd "/health on 7410 not answering"
+  local failed
+  failed=$( { systemctl --user --failed --plain --no-legend; systemctl --failed --plain --no-legend; } | awk '{print $1}' | grep -v '^app-.*autostart' | sort -u | paste -sd, -)
+  [ -z "$failed" ] || fail failed-units "$failed"
+}
+
+check_capacity() {
+  local root tmp
+  root=$(df --output=pcent / | tail -1 | tr -dc 0-9)
+  [ "$root" -lt 85 ] || fail disk "/ at ${root}%"
+  tmp=$(df --output=ipcent /tmp | tail -1 | tr -dc 0-9)
+  [ "$tmp" -lt 60 ] || fail tmp-inodes "/tmp inodes at ${tmp}% (seats hold at 85%)"
+}
+
+check_backups() {
+  # A real read: since the 10-11 export move the UNAS denies access() probes on files it lets us open.
+  timeout 20 head -c 1 "$UNAS/restic/config" >/dev/null 2>&1 || fail unas-mount "$UNAS not readable"
+  check_stamp backup-basement "$RESTIC/last-success-basement" 26
+  check_stamp backup-mac "$RESTIC/last-success-mac" 30
+  check_stamp restic-check "$RESTIC/last-check-ok" $((8 * 24))
+}
+
+check_thermals() {
+  local gpu cpu
+  gpu=$(nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits 2>/dev/null | sort -n | tail -1)
+  [ -n "$gpu" ] || fail gpu "nvidia-smi not answering"
+  [ -z "$gpu" ] || [ "$gpu" -lt 85 ] || fail gpu-temp "GPU at ${gpu}C"
+  cpu=$(cat /sys/class/hwmon/hwmon*/temp*_input 2>/dev/null | sort -n | tail -1)
+  [ -z "$cpu" ] || [ $((cpu / 1000)) -lt 90 ] || fail cpu-temp "hottest sensor at $((cpu / 1000))C"
+}
+
+claude_refresh_days() {
+  jq -r '.claudeAiOauth.refreshTokenExpiresAt // empty | (. / 1000 - now) / 86400 | floor' "$1" 2>/dev/null
+}
+
+check_tokens() {
+  local f label days expiring=()
+  for f in "$HOME/.claude/.credentials.json" "$HOME"/.claude-profiles/*/.credentials.json; do
+    [ -f "$f" ] || continue
+    days=$(claude_refresh_days "$f")
+    [ -n "$days" ] && [ "$days" -lt "$TOKEN_WARN_DAYS" ] || continue
+    label=$(basename "$(dirname "$f")"); [ "$label" = .claude ] && label=default
+    expiring+=("$label in ${days}d")
+  done
+  [ ${#expiring[@]} -eq 0 ] || fail token-expiry "Claude refresh token expiring: $(IFS=,; echo "${expiring[*]}")"
+  timeout 20 gh auth status > /dev/null 2>&1 || fail gh-auth "gh auth status failing"
+}
+
+# The seat watchdog covers seat heartbeats; this catches it, or any timer, no longer firing.
+check_timers() {
+  local overdue inactive t
+  overdue=$(systemctl --user list-timers --output=json 2>/dev/null \
+    | jq -r --argjson grace "$TIMER_GRACE_SECONDS" \
+      '.[] | select((.next // 0) > 0 and .next / 1000000 < now - $grace) | .unit' | paste -sd, -)
+  inactive=$(for t in $(systemctl --user list-unit-files --type=timer --state=enabled --no-legend | awk '{print $1}'); do
+    systemctl --user is-active -q "$t" || echo "$t"
+  done | paste -sd, -)
+  [ -z "$overdue$inactive" ] || fail stale-timers "overdue: ${overdue:-none}; enabled but not running: ${inactive:-none}"
+}
+
+write_status() {
+  local ok=$1
+  jq -n --arg at "$(date -Is)" --argjson ok "$ok" --arg failing "$(IFS=,; echo "${failing[*]}")" \
+    '{at: $at, ok: $ok, failing: ($failing | split(",") | map(select(. != "")))}' \
+    | jq --args '.details = $ARGS.positional' "${details[@]}" > "$STATE/status.json.tmp"
+  mv "$STATE/status.json.tmp" "$STATE/status.json"
+}
+
+push_on_change() {
+  local now prev url title body
+  now=$(IFS=,; echo "${failing[*]}")
+  prev=$(cat "$STATE/last-failing" 2>/dev/null || echo "")
+  [ "$now" = "$prev" ] && { rm -f "$STATE/pending"; return 0; }
+  # Debounce: a new set of failing checks must repeat on the next run before it pushes.
+  [ "$now" = "$(cat "$STATE/pending" 2>/dev/null)" ] || { echo "$now" > "$STATE/pending"; return 0; }
+  rm -f "$STATE/pending"
+  echo "$now" > "$STATE/last-failing"
+  url=$(jq -r '.digest.push.url // empty' "$HOME/.config/titan-factory/config.json")
+  [ -n "$url" ] || return 0
+  if [ -z "$now" ]; then title="basement: healthy"; body="Recovered (was: $prev)"
+  else title="basement: DEGRADED"; body=$(printf '%s\n' "${details[@]}"); fi
+  curl -fsS --max-time 10 -H "Title: $title" -H "Tags: basement" --data-binary "$body" "$url" > /dev/null
+}
+
+check_services
+check_capacity
+check_thermals
+check_backups
+check_tokens
+check_timers
+if [ ${#failing[@]} -eq 0 ]; then write_status true; else write_status false; fi
+push_on_change

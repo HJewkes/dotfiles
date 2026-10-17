@@ -6,7 +6,7 @@ SCRIPT="$ROOT/private_dot_claude/executable_statusline-command.sh"
 export STATUSLINE_RATE_LIMITS="$ROOT/private_dot_claude/scripts/executable_rate-limits.sh"
 export STATUSLINE_TEST_WIDTH=200
 FAILS=0
-DEFAULT=$'\uf007' AGENTS=$'\U000f06a9' PERSONAL=$'\uf015' WORKOUT=$'\U000f01e6'
+DEFAULT=$'\uf007' AGENTS=$'\U000f06a9' PERSONAL=$'\uf015' WORKOUT=$'\U000f01e6' SERVER=$'\U000f048b'
 CLOCK_1=$'\U000f143f' CLOCK_2=$'\U000f1440' CLOCK_5=$'\U000f1443' CLOCK_12=$'\U000f144a' CLOCK_ALERT=$'\U000f0955'
 G_EMPTY=$'\U000f0873' G_LOW=$'\U000f0875' G_MID=$'\U000f029a' G_FULL=$'\U000f0874'
 
@@ -61,6 +61,9 @@ check "does not repeat the current account among the others" "$out" "$AGENTS*$AG
 
 out=$(CLAUDE_CONFIG_DIR="$HOME/.claude-profiles/other" render_with_dir '')
 check "falls back to the short name for an unknown account" "$out" "other ▁▄" yes
+
+out=$(CLAUDE_CONFIG_DIR="$HOME/.claude-profiles/server" render_with_dir '')
+check "shows the server glyph for the server account" "$out" "$SERVER ▁▄" yes
 
 for pair in low:$G_EMPTY medium:$G_LOW high:$G_MID xhigh:$G_FULL max:$G_FULL; do
     out=$(render "\"effort\":{\"level\":\"${pair%%:*}\"},")

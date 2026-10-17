@@ -1,6 +1,10 @@
 {{- $name := promptStringOnce . "name" "Git author name" -}}
 {{- $email := promptStringOnce . "email" "Git author email" -}}
 {{- $machine := promptChoiceOnce . "machine" "Machine type" (list "personal" "work" "server") -}}
+{{- $awDataDir := "" -}}
+{{- if eq $machine "server" -}}
+{{-   $awDataDir = promptStringOnce . "awDataDir" "active-work data dir to back up (may use $HOME)" -}}
+{{- end }}
 
 encryption = "age"
 
@@ -12,3 +16,6 @@ encryption = "age"
     name = {{ $name | quote }}
     email = {{ $email | quote }}
     machine = {{ $machine | quote }}
+{{- if $awDataDir }}
+    awDataDir = {{ $awDataDir | quote }}
+{{- end }}
