@@ -1,7 +1,7 @@
 #!/bin/zsh
 # Claude Code TUI statusline — renders floating pills for the footer
 # Called by Claude Code on every statusline refresh, receives JSON via stdin
-# Renders: git pill, context bar pill, rate limit pill, metrics pill, auth pill, session pill
+# Renders: git pill, context bar pill, rate limit pill, Codex pill, session pill, auth pill
 
 # ── ANSI colors (Catppuccin Mocha) ──────────────────────────
 RST="\033[0m"
@@ -16,6 +16,7 @@ BG_MAUVE="\033[48;2;203;166;247m"
 BG_YELLOW="\033[48;2;249;226;175m"
 BG_PEACH="\033[48;2;250;179;135m"
 BG_RED="\033[48;2;243;139;168m"
+BG_GREEN="\033[48;2;166;227;161m"
 
 FG_CRUST="\033[38;2;17;17;27m"
 FG_SURFACE0="\033[38;2;49;50;68m"
@@ -26,6 +27,7 @@ FG_TEAL_DIM="\033[38;2;40;110;95m"
 FG_FLAMINGO="\033[38;2;242;205;205m"
 FG_FLAMINGO_DIM="\033[38;2;150;110;110m"
 FG_GREEN="\033[38;2;166;227;161m"
+FG_GREEN_DIM="\033[38;2;50;110;60m"
 FG_YELLOW="\033[38;2;249;226;175m"
 FG_PEACH="\033[38;2;250;179;135m"
 FG_TEAL="\033[38;2;148;226;213m"
@@ -241,8 +243,9 @@ detect_git_state() {
 # ── RATE LIMIT DATA ────────────────────────────────────────
 rate_data=$("${STATUSLINE_RATE_LIMITS:-$HOME/.claude/scripts/rate-limits.sh}" 2>/dev/null)
 IFS='|' read -r rate_5hr rate_weekly rate_5hr_reset rate_weekly_reset \
-    rate_scoped rate_scoped_model rate_weekly_sev rate_scoped_sev rate_age <<< "${rate_data%%$'\n'*}"
+    rate_scoped rate_scoped_model rate_weekly_sev rate_scoped_sev rate_age rate_account <<< "${rate_data%%$'\n'*}"
 other_rates=$(sed -n '/^other|/p' <<< "$rate_data")
+codex_rates=$(sed -n 's/^codex|//p' <<< "$rate_data")
 [[ -z "$rate_5hr" ]] && rate_5hr="unknown"
 [[ -z "$rate_weekly" ]] && rate_weekly="unknown"
 
@@ -466,7 +469,9 @@ fi
 
 
 # Pill 3: Rate limit — teal caps
-STALE_AFTER=3600
+# The usage poller writes every 150s and the macOS refresher every 5 minutes,
+# so a reading older than this means its source has stopped.
+STALE_AFTER=600
 
 account_short_name() {
     local base="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
@@ -507,14 +512,15 @@ effort_gauge() {
 CLOCK_HOURS=(f143f f1440 f1441 f1442 f1443 f1444 f1445 f1446 f1447 f1448 f1449 f144a)
 ICON_CLOCK_ALERT=$(printf '\U000f0955')
 
-# " <clock>" when the cached figures are older than STALE_AFTER, else nothing.
-# The hand shows the age in hours; past 12h it is the alert clock.
+# The age of figures older than STALE_AFTER, else nothing: " 25m" under an
+# hour, then a clock whose hand shows the hours; past 12h the alert clock.
 stale_age_label() {
     local age="$1" hours
     [[ "$age" =~ ^[0-9]+$ ]] || return 0
     ((age < STALE_AFTER)) && return 0
     hours=$((age / 3600))
-    if ((hours > 12)); then printf ' %s' "$ICON_CLOCK_ALERT"
+    if ((hours == 0)); then printf ' %sm' "$((age / 60))"
+    elif ((hours > 12)); then printf ' %s' "$ICON_CLOCK_ALERT"
     else printf " \\U000${CLOCK_HOURS[hours]}"
     fi
 }
@@ -567,7 +573,9 @@ stale_label=$(stale_age_label "$rate_age")
 other_cells=$(build_other_cells "$other_rates")
 others_part=""
 [[ -n "$other_cells" ]] && others_part=" ${FG_OVERLAY}│${FG_TEAL_DIM}${other_cells}"
-current_usage="$(account_label "$account_name") ${bar_5hr}${bar_weekly}${bar_scoped}${rate_pct_display}${stale_label}"
+# A dir on a named profile's login shows both glyphs, e.g. default then personal.
+current_label="$(account_label "$account_name")${rate_account:+$(account_label "$rate_account")}"
+current_usage="${current_label} ${bar_5hr}${bar_weekly}${bar_scoped}${rate_pct_display}${stale_label}"
 
 # Pill 2: Context bar — blue bg with dark inset bars, led by model and effort
 model_part="${FG_CRUST}${model_icon} ${model_name}${effort_label:+ ${effort_label}} "
@@ -577,6 +585,22 @@ pill2_no_model=" ${FG_BLUE}${ICON_LROUND}${BG_BLUE} ${pill2_body}${FG_BLUE}${ICO
 
 usage_url=$(usage_link_url "$account_name" "$rate_5hr" "$rate_weekly" "$other_rates")
 pill3=" \033]8;;${usage_url}\a${FG_TEAL}${ICON_LROUND}${BG_TEAL}${FG_TEAL_DIM} ${current_usage}${others_part} ${RST}${FG_TEAL}${ICON_RROUND}${RST}\033]8;;\a"
+
+# Pill 5: Codex — its own pill, since it is another provider's budget. Only the
+# windows Codex reports are drawn; with neither there is no pill.
+codex_bars() {
+    local five weekly age bars=""
+    IFS='|' read -r five weekly age <<< "$1"
+    [[ "$five" == <-> ]] && bars+=$(pct_to_bar "$five")
+    [[ "$weekly" == <-> ]] && bars+=$(pct_to_bar "$weekly")
+    [[ -n "$bars" ]] && printf '%s%s' "$bars" "$(stale_age_label "$age")"
+}
+
+pill5=""
+codex_usage=$(codex_bars "$codex_rates")
+if [[ -n "$codex_usage" ]]; then
+    pill5=" ${FG_GREEN}${ICON_LROUND}${BG_GREEN}${FG_GREEN_DIM} codex ${codex_usage} ${RST}${FG_GREEN}${ICON_RROUND}${RST}"
+fi
 
 # Pill 4: Session — combines time + ID
 pill4=" ${FG_FLAMINGO}${ICON_LROUND}${BG_FLAMINGO}${FG_FLAMINGO_DIM} ${session_time} ${FG_CRUST}${session_id} ${RST}${FG_FLAMINGO}${ICON_RROUND}${RST}"
@@ -597,18 +621,18 @@ pill4_no_time=" ${FG_FLAMINGO}${ICON_LROUND}${BG_FLAMINGO}${FG_CRUST} ${session_
 RIGHT_MARGIN=4
 
 # Try each tier from widest to narrowest
-left="${pill1}${pill2}${pill3}${pill4}${auth_pill}"
+left="${pill1}${pill2}${pill3}${pill5}${pill4}${auth_pill}"
 if (( $(visible_len "$left") > term_width - RIGHT_MARGIN )); then
     # Tier 2: drop worktree suffix
-    left="${pill1_no_wt}${pill2}${pill3}${pill4}${auth_pill}"
+    left="${pill1_no_wt}${pill2}${pill3}${pill5}${pill4}${auth_pill}"
 fi
 if (( $(visible_len "$left") > term_width - RIGHT_MARGIN )); then
     # Tier 3: drop model label + session time
-    left="${pill1_no_wt}${pill2_no_model}${pill3}${pill4_no_time}${auth_pill}"
+    left="${pill1_no_wt}${pill2_no_model}${pill3}${pill5}${pill4_no_time}${auth_pill}"
 fi
 if (( $(visible_len "$left") > term_width - RIGHT_MARGIN )); then
     # Tier 4: drop session pill entirely
-    left="${pill1_no_wt}${pill2_no_model}${pill3}${auth_pill}"
+    left="${pill1_no_wt}${pill2_no_model}${pill3}${pill5}${auth_pill}"
 fi
 if (( $(visible_len "$left") > term_width - RIGHT_MARGIN )); then
     # Tier 5: minimal — git + context bar only

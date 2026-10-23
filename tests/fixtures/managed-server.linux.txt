@@ -6,6 +6,7 @@
 .claude/scripts/hook-stop.sh
 .claude/scripts/kwin-session-start-guard.py
 .claude/scripts/preview-styles.sh
+.claude/scripts/rate-limits.sh
 .claude/scripts/starship-auth.sh
 .claude/scripts/starship-ctx-group.sh
 .claude/scripts/starship-git-group.sh

@@ -68,9 +68,10 @@ Steps, run by the owner:
    only allowlisted apps, with no extra env and `isolate_home: true`. Don't bump
    the pin without re-reading upstream.
 
-Not deployed on Linux: the LaunchAgent and `refresh-usage.sh`, `rate-limits.sh`
-(it reads the macOS Keychain, so the status line shows usage as unknown), and
-the `claude` profile shim.
+Not deployed on Linux: the LaunchAgent and `refresh-usage.sh`, and the `claude`
+profile shim. `rate-limits.sh` is deployed on both: on Linux the status line
+reads usage from the files the usage poller (`anthropic-account poll --write`)
+writes into each config dir, and on macOS from the cache the LaunchAgent keeps.
 
 ## What's included
 

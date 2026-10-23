@@ -48,9 +48,6 @@ tests
 # macOS only. LaunchAgents, and the usage refresher one of them drives.
 Library
 .claude/scripts/refresh-usage.sh
-# Reads the token from the macOS Keychain with BSD date/stat; without it the
-# status line shows usage as unknown.
-.claude/scripts/rate-limits.sh
 # The claude shim needs a PATH directory ahead of ~/.local/bin, which only
 # /opt/homebrew/bin provides.
 .local/libexec/claude-shim

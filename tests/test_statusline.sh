@@ -82,8 +82,9 @@ check_raw "renders max effort in bold red" "$raw" $'\033[1m\033[38;2;243;139;168
 check_raw "draws the account glyph in the pill text colour" "$raw" $'\033[38;2;40;110;95m '"$AGENTS"
 if [[ "$raw" == *$'\033[38;2;20;100;45m'* ]]; then echo "FAIL leaves no green glyph colour"; FAILS=$((FAILS + 1)); else echo "ok   leaves no green glyph colour"; fi
 
-# The stale marker is a clock whose hand shows the age in hours, from 1h up.
-for pair in 3540:none 3600:$CLOCK_1 18000:$CLOCK_5 46800:$CLOCK_ALERT 259200:$CLOCK_ALERT 43200:$CLOCK_12; do
+# The stale marker is the age in minutes from 10m, then a clock whose hand
+# shows the hours, from 1h up.
+for pair in 540:none 1500:25m 3540:59m 3600:$CLOCK_1 18000:$CLOCK_5 46800:$CLOCK_ALERT 259200:$CLOCK_ALERT 43200:$CLOCK_12; do
     age=${pair%%:*} want=${pair#*:}
     PERSONAL_AGE=$age write_cache true
     out=$(render '')
@@ -103,13 +104,14 @@ write_cache true
 # Like the live files, the fixtures have no trailing newline.
 write_cache true
 for f in "$HOME/.claude.json" "$HOME/.claude-profiles/personal/.claude.json"; do
-    printf '{"oauthAccount":{"accountUuid":"fixture-shared"}}' > "$f"
+    printf '{"oauthAccount":{"accountUuid":"fixture-shared","organizationUuid":"fixture-org"}}' > "$f"
 done
-printf '{"oauthAccount":{"accountUuid":"fixture-agents"}}' > "$HOME/.claude-profiles/agents/.claude.json"
+printf '{"oauthAccount":{"accountUuid":"fixture-agents","organizationUuid":"fixture-org"}}' > "$HOME/.claude-profiles/agents/.claude.json"
 out=$(render '"effort":{"level":"high"},')
-check "shows a shared login once, from its newest record" "$out" "$DEFAULT ▁▄" yes
-check "drops the older record of a shared login" "$out" "$PERSONAL" no
-check "puts the current account first, then a separator, then the others" "$out" "$AGENTS ▁▄ │ $DEFAULT ▁▄" yes
+check "shows a shared login once, under its named profile" "$out" "$PERSONAL ▁▄" yes
+check "drops the default dir's duplicate of a shared login" "$out" "$DEFAULT" no
+check "serves a shared login from its newest record" "$out" "$PERSONAL ▁▄ $CLOCK_2" no
+check "puts the current account first, then a separator, then the others" "$out" "$AGENTS ▁▄ │ $PERSONAL ▁▄" yes
 
 out=$(CLAUDE_CONFIG_DIR="$HOME/.claude-profiles/personal" render_with_dir '')
 check "treats the merged account as current when any member is the current dir" "$out" "$PERSONAL ▁▄ │ $AGENTS ▁▄" yes
