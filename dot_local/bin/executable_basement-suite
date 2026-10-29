@@ -92,8 +92,8 @@ prepare() {
   LOG="$RUNS_ROOT/$AGENT/$REPO-$stamp.log"
   trap cleanup EXIT
   trap 'exit 130' INT TERM HUP
-  # Per-run and removed at exit: leaked fixtures filled the 1M-inode /tmp tmpfs (tests need tmpfs speed).
-  RUN_TMP="/tmp/bs-$$"
+  # Per-run and removed at exit. On disk, not /tmp: leaked fixtures filled the 1M-inode /tmp tmpfs (TP-4471).
+  RUN_TMP="${XDG_CACHE_HOME:-$HOME/.cache}/basement-suite/bs-$$"
   mkdir -p "$RUN_TMP"
   export TMPDIR=$RUN_TMP TMP=$RUN_TMP TEMP=$RUN_TMP
   export NODE_COMPILE_CACHE=${NODE_COMPILE_CACHE:-$HOME/.cache/node-compile-cache}
