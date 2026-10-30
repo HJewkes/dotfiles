@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+# Run a repo's test suite at a pushed branch head in a throwaway detached worktree on basement.
+# Usage: basement-suite <repo> <branch> [--agent <name>] [--no-build] [--run <script>] [-- <extra args>]
+# Repos: agent-chat titan-platform titan-design active-work codewatch voltras-mcp royal_road_player.
+# --run picks a package script (default test); royal_road_player (Python) supports test only.
+# Exit code is the script exit code;
+# 75 means all slots are busy or basement is in maintenance (retry later), 64 a usage error, 69 a setup (fetch/install/build) failure.
+set -uo pipefail
+
+MAX_SLOTS=${BASEMENT_SUITE_SLOTS:-8}
+REPOS=(agent-chat titan-platform titan-design active-work codewatch voltras-mcp royal_road_player)
+# royal_road_player gets its own clone: ~/projects/audiobook is the pilot's working copy.
+declare -A SRC_DIRS=([royal_road_player]="$HOME/suite-mirrors/royal_road_player")
+VENV_CACHE="$HOME/.cache/basement-suite/venvs"
+RUN_TMP_ROOT="$HOME/.cache/basement-suite"
+LEGACY_TMP_ROOT=${BASEMENT_SUITE_LEGACY_TMP:-/tmp}
+PYTHON_VERSION=3.11
+RUNS_ROOT="$HOME/suite-runs"
+SLOT_DIR="${XDG_RUNTIME_DIR:-/tmp}/basement-suite"
+KEEP_LOGS=20
+MAINTENANCE_FLAG="$RUNS_ROOT/MAINTENANCE"
+
+usage() { sed -n '3,7p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 64; }
+
+parse_args() {
+  [[ $# -ge 2 ]] || usage
+  REPO=$1 BRANCH=$2; shift 2
+  AGENT="" BUILD=1 SCRIPT=test EXTRA=()
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --agent) AGENT=${2:-}; shift 2 ;;
+      --no-build) BUILD=0; shift ;;
+      --run) SCRIPT=${2:-}; shift 2 ;;
+      --) shift; EXTRA=("$@"); break ;;
+      *) usage ;;
+    esac
+  done
+  [[ " ${REPOS[*]} " == *" $REPO "* ]] || { echo "unknown repo: $REPO (known: ${REPOS[*]})" >&2; exit 64; }
+  [[ $BRANCH =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "bad branch name: $BRANCH" >&2; exit 64; }
+  [[ $SCRIPT =~ ^[A-Za-z0-9:._-]+$ ]] || { echo "bad script name: $SCRIPT" >&2; exit 64; }
+  [[ -n $AGENT ]] || AGENT=${BRANCH##*/}
+  [[ $AGENT =~ ^[A-Za-z0-9._-]+$ ]] || { echo "bad agent name: $AGENT" >&2; exit 64; }
+}
+
+# Planned downtime (BIOS flash, reboot): refuse new runs like a full house, so callers retry later.
+refuse_if_maintenance() {
+  [[ -e $MAINTENANCE_FLAG ]] || return 0
+  printf '%s maintenance repo=%s agent=%s\n' "$(date -Is)" "$REPO" "$AGENT" >>"$RUNS_ROOT/refusals.log"
+  echo "basement-suite: basement is in maintenance ($(head -c 200 "$MAINTENANCE_FLAG")); retry later" >&2
+  exit 75
+}
+
+take_slot() {
+  mkdir -p "$SLOT_DIR"
+  local i
+  for ((i = 1; i <= MAX_SLOTS; i++)); do
+    exec {SLOT_FD}>"$SLOT_DIR/slot.$i"
+    if flock -n "$SLOT_FD"; then SLOT=$i; return 0; fi
+    exec {SLOT_FD}>&-
+  done
+  mkdir -p "$RUNS_ROOT"
+  printf '%s refused repo=%s agent=%s\n' "$(date -Is)" "$REPO" "$AGENT" >>"$RUNS_ROOT/refusals.log"
+  echo "basement-suite: all $MAX_SLOTS slots busy; retry in a few minutes" >&2
+  exit 75
+}
+
+# shellcheck disable=SC2329  # invoked via trap
+cleanup() {
+  # Ignored signals are inherited, so a group-wide TERM cannot kill the steps below either.
+  trap '' INT TERM HUP
+  [[ -z ${CLEANED:-} ]] || return 0
+  CLEANED=1
+  # First: this is the inode-heavy part, and the worktree remove below is slow enough to get SIGKILLed.
+  [[ -n ${RUN_TMP:-} && -d $RUN_TMP ]] && rm -rf "$RUN_TMP"
+  [[ -n ${WT:-} && -d $WT ]] && git -C "$SRC" worktree remove --force "$WT" >/dev/null 2>&1
+  git -C "$SRC" worktree prune >/dev/null 2>&1
+  [[ -n ${RUN_REF:-} ]] && git -C "$SRC" update-ref -d "$RUN_REF" >/dev/null 2>&1
+  find "$RUNS_ROOT/$AGENT" -maxdepth 1 -name '*.log' -printf '%T@ %p\n' | sort -rn |
+    tail -n +$((KEEP_LOGS + 1)) | cut -d' ' -f2- | xargs -r -d '\n' rm -f
+}
+
+# shellcheck disable=SC2329  # invoked via trap
+on_signal() {
+  cleanup
+  exit 130
+}
+
+run_is_dead() {
+  local pid=${1##*-}
+  [[ -d $1 && $pid =~ ^[0-9]+$ && ! -d /proc/$pid ]]
+}
+
+# SIGKILL skips cleanup, so each run reaps what dead ones left. bs-* is where runs before BS-44 kept RUN_TMP.
+sweep_dead_runs() {
+  local dir
+  for dir in "$RUN_TMP_ROOT"/run-* "$LEGACY_TMP_ROOT"/bs-*; do
+    run_is_dead "$dir" && rm -rf "$dir"
+  done
+  for dir in "$RUNS_ROOT"/*/"$REPO"-[0-9]*-[0-9]*-[0-9]*; do
+    run_is_dead "$dir" || continue
+    # git refuses a tree whose .git an interrupted remove already took.
+    git -C "$SRC" worktree remove --force "$dir" >/dev/null 2>&1 || rm -rf "$dir"
+  done
+  git -C "$SRC" worktree prune >/dev/null 2>&1
+}
+
+step() {
+  local name=$1; shift
+  echo "== $name: $*" >>"$LOG"
+  if ! "$@" >>"$LOG" 2>&1; then
+    echo "basement-suite: $name failed; last lines of $LOG:"
+    tail -n 25 "$LOG"
+    echo "exit=69"
+    exit 69
+  fi
+}
+
+prepare() {
+  SRC=${SRC_DIRS[$REPO]:-$HOME/projects/$REPO}
+  [[ -d $SRC/.git ]] || gh repo clone "HJewkes/$REPO" "$SRC" -- -q >/dev/null 2>&1 || { echo "clone of $REPO failed" >&2; exit 69; }
+  local stamp; stamp=$(date +%Y%m%d-%H%M%S)-$$
+  mkdir -p "$RUNS_ROOT/$AGENT"
+  WT="$RUNS_ROOT/$AGENT/$REPO-$stamp"
+  LOG="$RUNS_ROOT/$AGENT/$REPO-$stamp.log"
+  trap cleanup EXIT
+  trap on_signal INT TERM HUP
+  sweep_dead_runs
+  # On disk, per-run and removed at exit: leaked fixtures filled the 1M-inode /tmp tmpfs.
+  RUN_TMP="$RUN_TMP_ROOT/run-$$"
+  mkdir -p "$RUN_TMP"
+  export TMPDIR=$RUN_TMP TMP=$RUN_TMP TEMP=$RUN_TMP
+  export NODE_COMPILE_CACHE=${NODE_COMPILE_CACHE:-$HOME/.cache/node-compile-cache}
+  RUN_REF="refs/suite-runs/$AGENT-$stamp"
+  step fetch git -C "$SRC" fetch -q origin "+refs/heads/$BRANCH:$RUN_REF"
+  step worktree git -C "$SRC" worktree add -q --detach "$WT" "$RUN_REF"
+  HEAD_SHA=$(git -C "$WT" rev-parse HEAD)
+  cd "$WT" || exit 69
+  if [[ ! -f package.json && -f backend/requirements.txt ]]; then prepare_python; else prepare_node; fi
+}
+
+prepare_node() {
+  PM=pnpm; [[ -f package-lock.json ]] && PM=npm
+  if [[ $PM == npm ]]; then step install npm ci --no-audit --no-fund
+  else step install pnpm install --frozen-lockfile --prefer-offline; fi
+  if [[ $BUILD == 1 ]] && jq -e '.scripts.build' package.json >/dev/null; then step build "$PM" run build; fi
+}
+
+# Venvs are cached by requirements hash and built under a lock, so parallel runs share one.
+prepare_python() {
+  PM=python
+  [[ $SCRIPT == test ]] || { echo "royal_road_player supports --run test only" | tee -a "$LOG"; exit 64; }
+  local req=backend/requirements.txt key
+  key=$(sha256sum "$req" | cut -c1-16)
+  VENV="$VENV_CACHE/$REPO-py$PYTHON_VERSION-$key"
+  mkdir -p "$VENV_CACHE"
+  exec {VENV_FD}>"$VENV.lock"
+  flock "$VENV_FD"
+  if [[ ! -x $VENV/bin/pytest ]]; then
+    step venv uv venv -q --python "$PYTHON_VERSION" "$VENV"
+    step install uv pip install -q --python "$VENV/bin/python" -r "$req"
+  fi
+  exec {VENV_FD}>&-
+}
+
+run_script() {
+  if [[ $PM == python ]]; then
+    (cd backend && PYTHONPATH=. nice -n 5 "$VENV/bin/pytest" tests/ -q "${EXTRA[@]}")
+    return
+  fi
+  # npm needs `--` before script args; pnpm forwards them as-is and would pass a literal `--`.
+  local args=("${EXTRA[@]}")
+  [[ $PM == npm && ${#args[@]} -gt 0 ]] && args=(-- "${args[@]}")
+  nice -n 5 "$PM" run "$SCRIPT" "${args[@]}"
+}
+
+summarize() {
+  local code=$1
+  sed 's/\x1b\[[0-9;]*m//g' "$LOG" | grep -E '^ *(FAIL|×) |^(FAILED|ERROR) |Test Files |Tests  |Tasks: |Failed: |No test files found|^=+ .*(passed|failed|error)|^[0-9]+ (passed|failed|error)' | grep -v '✓' | tail -n 40
+  if [[ $code -ne 0 ]]; then echo "-- last lines:"; sed 's/\x1b\[[0-9;]*m//g' "$LOG" | tail -n 15; fi
+  echo "repo=$REPO branch=$BRANCH script=$SCRIPT head=$HEAD_SHA slot=$SLOT/$MAX_SLOTS secs=$SECONDS log=basement:$LOG"
+  echo "exit=$code"
+}
+
+main() {
+  parse_args "$@"
+  refuse_if_maintenance
+  take_slot
+  prepare
+  SECONDS=0
+  printf '%s start repo=%s script=%s agent=%s slot=%s\n' "$(date -Is)" "$REPO" "$SCRIPT" "$AGENT" "$SLOT" >>"$RUNS_ROOT/runs.log"
+  echo "== $SCRIPT: $PM run $SCRIPT ${EXTRA[*]}" >>"$LOG"
+  local code=0
+  run_script >>"$LOG" 2>&1 || code=$?
+  summarize "$code"
+  exit "$code"
+}
+
+main "$@"
