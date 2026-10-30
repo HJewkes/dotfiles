@@ -12,6 +12,8 @@ REPOS=(agent-chat titan-platform titan-design active-work codewatch voltras-mcp 
 # royal_road_player gets its own clone: ~/projects/audiobook is the pilot's working copy.
 declare -A SRC_DIRS=([royal_road_player]="$HOME/suite-mirrors/royal_road_player")
 VENV_CACHE="$HOME/.cache/basement-suite/venvs"
+RUN_TMP_ROOT="$HOME/.cache/basement-suite"
+LEGACY_TMP_ROOT=${BASEMENT_SUITE_LEGACY_TMP:-/tmp}
 PYTHON_VERSION=3.11
 RUNS_ROOT="$HOME/suite-runs"
 SLOT_DIR="${XDG_RUNTIME_DIR:-/tmp}/basement-suite"
@@ -64,12 +66,42 @@ take_slot() {
 
 # shellcheck disable=SC2329  # invoked via trap
 cleanup() {
-  [[ -n ${WT:-} && -d $WT ]] && git -C "$SRC" worktree remove --force "$WT" >/dev/null 2>&1
+  # Ignored signals are inherited, so a group-wide TERM cannot kill the steps below either.
+  trap '' INT TERM HUP
+  [[ -z ${CLEANED:-} ]] || return 0
+  CLEANED=1
+  # First: this is the inode-heavy part, and the worktree remove below is slow enough to get SIGKILLed.
   [[ -n ${RUN_TMP:-} && -d $RUN_TMP ]] && rm -rf "$RUN_TMP"
+  [[ -n ${WT:-} && -d $WT ]] && git -C "$SRC" worktree remove --force "$WT" >/dev/null 2>&1
   git -C "$SRC" worktree prune >/dev/null 2>&1
   [[ -n ${RUN_REF:-} ]] && git -C "$SRC" update-ref -d "$RUN_REF" >/dev/null 2>&1
   find "$RUNS_ROOT/$AGENT" -maxdepth 1 -name '*.log' -printf '%T@ %p\n' | sort -rn |
     tail -n +$((KEEP_LOGS + 1)) | cut -d' ' -f2- | xargs -r -d '\n' rm -f
+}
+
+# shellcheck disable=SC2329  # invoked via trap
+on_signal() {
+  cleanup
+  exit 130
+}
+
+run_is_dead() {
+  local pid=${1##*-}
+  [[ -d $1 && $pid =~ ^[0-9]+$ && ! -d /proc/$pid ]]
+}
+
+# SIGKILL skips cleanup, so each run reaps what dead ones left. bs-* is where runs before BS-44 kept RUN_TMP.
+sweep_dead_runs() {
+  local dir
+  for dir in "$RUN_TMP_ROOT"/run-* "$LEGACY_TMP_ROOT"/bs-*; do
+    run_is_dead "$dir" && rm -rf "$dir"
+  done
+  for dir in "$RUNS_ROOT"/*/"$REPO"-[0-9]*-[0-9]*-[0-9]*; do
+    run_is_dead "$dir" || continue
+    # git refuses a tree whose .git an interrupted remove already took.
+    git -C "$SRC" worktree remove --force "$dir" >/dev/null 2>&1 || rm -rf "$dir"
+  done
+  git -C "$SRC" worktree prune >/dev/null 2>&1
 }
 
 step() {
@@ -91,9 +123,10 @@ prepare() {
   WT="$RUNS_ROOT/$AGENT/$REPO-$stamp"
   LOG="$RUNS_ROOT/$AGENT/$REPO-$stamp.log"
   trap cleanup EXIT
-  trap 'exit 130' INT TERM HUP
-  # Per-run and removed at exit: leaked fixtures filled the 1M-inode /tmp tmpfs (tests need tmpfs speed).
-  RUN_TMP="/tmp/bs-$$"
+  trap on_signal INT TERM HUP
+  sweep_dead_runs
+  # On disk, per-run and removed at exit: leaked fixtures filled the 1M-inode /tmp tmpfs.
+  RUN_TMP="$RUN_TMP_ROOT/run-$$"
   mkdir -p "$RUN_TMP"
   export TMPDIR=$RUN_TMP TMP=$RUN_TMP TEMP=$RUN_TMP
   export NODE_COMPILE_CACHE=${NODE_COMPILE_CACHE:-$HOME/.cache/node-compile-cache}
