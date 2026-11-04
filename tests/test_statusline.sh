@@ -3,7 +3,8 @@
 # Run: zsh tests/test_statusline.sh
 ROOT="${0:A:h:h}"
 SCRIPT="$ROOT/private_dot_claude/executable_statusline-command.sh"
-export STATUSLINE_RATE_LIMITS="$ROOT/private_dot_claude/scripts/executable_rate-limits.sh"
+export STATUSLINE_RATE_LIMITS="$ROOT/tests/fixtures/cache-usage-reader.sh"
+WRAPPER="$ROOT/private_dot_claude/scripts/executable_rate-limits.sh"
 export STATUSLINE_TEST_WIDTH=200
 FAILS=0
 DEFAULT=$'\uf007' AGENTS=$'\U000f06a9' PERSONAL=$'\uf015' WORKOUT=$'\U000f01e6' SERVER=$'\U000f048b'
@@ -121,5 +122,30 @@ out=$(render '"effort":{"level":"high"},')
 check "still shows usage when an identity file is truncated" "$out" "$AGENTS ▁▄ │" yes
 check "keeps a dir with a truncated identity file as its own account" "$out" "$DEFAULT ▁▄" yes
 check "keeps the other dir of the shared login too" "$out" "$PERSONAL ▁▄" yes
+
+# rate-limits.sh is a thin wrapper over `anthropic-account status --statusline`.
+STUBS="$HOME/stubs"
+mkdir -p "$STUBS/ok" "$STUBS/fail" "$STUBS/empty"
+printf '#!/bin/sh\necho "10|50|0|0||||normal|30"\necho "other|fixture|5|6|60|"\n' > "$STUBS/ok/anthropic-account"
+printf '#!/bin/sh\necho "partial|output"\nexit 2\n' > "$STUBS/fail/anthropic-account"
+printf '#!/bin/sh\nexit 0\n' > "$STUBS/empty/anthropic-account"
+chmod +x "$STUBS"/*/anthropic-account
+SYSPATH="/usr/bin:/bin"
+
+out=$(PATH="$STUBS/ok:$SYSPATH" bash "$WRAPPER"); code=$?
+check "wrapper passes the CLI output through" "$out" "10|50|0|0||||normal|30"$'\n'"other|fixture|5|6|60|" yes
+check "wrapper exits 0 when the CLI succeeds" "$code" "0" yes
+
+out=$(PATH="$STUBS/fail:$SYSPATH" bash "$WRAPPER"); code=$?
+check "wrapper prints nothing when the CLI fails" "$out" "?" no
+check "wrapper exits 0 when the CLI fails" "$code" "0" yes
+
+out=$(PATH="$STUBS/empty:$SYSPATH" bash "$WRAPPER"); code=$?
+check "wrapper prints nothing when the CLI prints nothing" "$out" "?" no
+check "wrapper exits 0 when the CLI prints nothing" "$code" "0" yes
+
+out=$(PATH="$SYSPATH" bash "$WRAPPER"); code=$?
+check "wrapper prints nothing when the CLI is missing" "$out" "?" no
+check "wrapper exits 0 when the CLI is missing" "$code" "0" yes
 
 exit $((FAILS > 0))
