@@ -122,4 +122,27 @@ check "still shows usage when an identity file is truncated" "$out" "$AGENTS ▁
 check "keeps a dir with a truncated identity file as its own account" "$out" "$DEFAULT ▁▄" yes
 check "keeps the other dir of the shared login too" "$out" "$PERSONAL ▁▄" yes
 
+# Codex is a separate typed record; never reuse Claude's 3600s threshold.
+cat > "$HOME/codex-fixture.sh" <<'FIXTURE'
+#!/bin/sh
+cat "$HOME/codex-line"
+FIXTURE
+chmod +x "$HOME/codex-fixture.sh"
+export STATUSLINE_CODEX_RATE_LIMITS="$HOME/codex-fixture.sh"
+printf 'codex|basement|20|75|12|\n' > "$HOME/codex-line"
+out=$(render '')
+check "renders the separate Codex account cell" "$out" "codex basement ▂▆" yes
+for record in 'codex|basement|20|75|901|' 'codex|basement|unknown|unknown||' 'codex|basement|101|75|1|' 'codex|basement|20|75|-1|' 'codex|basement|20|75|12'; do
+    printf '%s\n' "$record" > "$HOME/codex-line"
+    out=$(render '')
+    check "renders malformed or stale Codex as unknown: $record" "$out" "codex basement ──" yes
+done
+printf 'codex|basement|0|0|900|\n' > "$HOME/codex-line"
+out=$(render '')
+check "preserves known Codex zero and 900s boundary" "$out" "codex basement ▁▁" yes
+printf 'codex|sk-proj-privateToken|20|75|0|\n' > "$HOME/codex-line"
+out=$(render '')
+check "does not echo unsafe Codex labels" "$out" "privateToken" no
+check "does not relabel unsafe Codex evidence as known" "$out" "codex default ──" yes
+
 exit $((FAILS > 0))
