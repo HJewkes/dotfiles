@@ -34,4 +34,31 @@ check "a spike above 60% sends level 60+spike" 'grep -q "(level 60+spike;" "$TMP
 run_at 40 45
 check "below 60% without a spike sends nothing" '[[ ! -s "$TMP/sent" ]]'
 
+run_at 59 61
+check "a successful send records the sent marker" '[[ -s "$TMP/.local/state/tmp-inode-alarm/sent-60" ]]'
+
+printf '#!/bin/sh\nexit 1\n' > "$TMP/bin/agent-chat"
+run_at 59 61
+rc=$?
+check "a failed delivery exits non-zero" '[[ $rc -ne 0 ]]'
+check "a failed delivery leaves no sent marker" '[[ ! -e "$TMP/.local/state/tmp-inode-alarm/sent-60" ]]'
+
+printf '#!/bin/sh\necho "$2" >> %s/to\n' "$TMP" > "$TMP/bin/agent-chat"
+run_unrouted() {
+    rm -f "$TMP/to"
+    HOME="$TMP" XDG_CONFIG_HOME="$TMP/.config" PATH="$TMP/bin:$PATH" bash -c 'mkdir -p "$HOME/.local/state/tmp-inode-alarm"; echo 59 > "$HOME/.local/state/tmp-inode-alarm/last-pct"; echo 61 > "$HOME/pct"; rm -f "$HOME"/.local/state/tmp-inode-alarm/sent-*; exec bash "$0"' "$SCRIPT"
+}
+
+run_unrouted
+check "the recipient defaults to tp-operator" 'grep -qx "tp-operator" "$TMP/to"'
+
+mkdir -p "$TMP/.config/basement-alerts"
+echo "filed-recipient" > "$TMP/.config/basement-alerts/to"
+run_unrouted
+check "the basement-alerts file recipient is used when the env var is unset" 'grep -qx "filed-recipient" "$TMP/to"'
+
+rm -f "$TMP/to"
+HOME="$TMP" XDG_CONFIG_HOME="$TMP/.config" TMP_INODE_ALARM_TO=from-env PATH="$TMP/bin:$PATH" bash -c 'echo 59 > "$HOME/.local/state/tmp-inode-alarm/last-pct"; rm -f "$HOME"/.local/state/tmp-inode-alarm/sent-*; exec bash "$0"' "$SCRIPT"
+check "the env var takes precedence over the file" 'grep -qx "from-env" "$TMP/to"'
+
 exit $FAILS
