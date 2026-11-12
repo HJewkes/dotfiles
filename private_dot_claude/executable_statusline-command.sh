@@ -241,7 +241,7 @@ detect_git_state() {
 # ── RATE LIMIT DATA ────────────────────────────────────────
 rate_data=$("${STATUSLINE_RATE_LIMITS:-$HOME/.claude/scripts/rate-limits.sh}" 2>/dev/null)
 IFS='|' read -r rate_5hr rate_weekly rate_5hr_reset rate_weekly_reset \
-    rate_scoped rate_scoped_model rate_weekly_sev rate_scoped_sev rate_age <<< "${rate_data%%$'\n'*}"
+    rate_scoped rate_scoped_model rate_weekly_sev rate_scoped_sev rate_age rate_self_label <<< "${rate_data%%$'\n'*}"
 other_rates=$(sed -n '/^other|/p' <<< "$rate_data")
 [[ -z "$rate_5hr" ]] && rate_5hr="unknown"
 [[ -z "$rate_weekly" ]] && rate_weekly="unknown"
@@ -488,6 +488,13 @@ account_label() {
     esac
 }
 
+# The default dir shows its own glyph plus the account its token logs into.
+self_account_label() {
+    account_label "$account_name"
+    [[ "$account_name" == "default" && -n "$rate_self_label" && "$rate_self_label" != "default" ]] \
+        && account_label "$rate_self_label"
+}
+
 # Effort level as a gauge glyph; max is bold red. An unknown level prints as
 # text. Restores $2 (the pill's text color) afterwards.
 effort_gauge() {
@@ -567,7 +574,7 @@ stale_label=$(stale_age_label "$rate_age")
 other_cells=$(build_other_cells "$other_rates")
 others_part=""
 [[ -n "$other_cells" ]] && others_part=" ${FG_OVERLAY}│${FG_TEAL_DIM}${other_cells}"
-current_usage="$(account_label "$account_name") ${bar_5hr}${bar_weekly}${bar_scoped}${rate_pct_display}${stale_label}"
+current_usage="$(self_account_label) ${bar_5hr}${bar_weekly}${bar_scoped}${rate_pct_display}${stale_label}"
 
 # Pill 2: Context bar — blue bg with dark inset bars, led by model and effort
 model_part="${FG_CRUST}${model_icon} ${model_name}${effort_label:+ ${effort_label}} "

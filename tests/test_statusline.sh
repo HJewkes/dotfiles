@@ -99,27 +99,29 @@ for pair in 3540:none 3600:$CLOCK_1 18000:$CLOCK_5 46800:$CLOCK_ALERT 259200:$CL
 done
 write_cache true
 
-# Merged logins: default and personal share one account id (a made-up value).
-# Like the live files, the fixtures have no trailing newline.
+# Merged logins: each record carries the hash of the account its token logged
+# into (made-up values here), so default and personal collapse into one account.
+tag_accounts() {
+    jq --arg h "$HOME" '
+        .[$h + "/.claude"].account = "shared" | .[$h + "/.claude-profiles/personal"].account = "shared"
+        | .[$h + "/.claude-profiles/agents"].account = "agents"' \
+        "$HOME/.claude/status-cache/usage.json" > "$HOME/usage.tmp" && mv "$HOME/usage.tmp" "$HOME/.claude/status-cache/usage.json"
+}
 write_cache true
-for f in "$HOME/.claude.json" "$HOME/.claude-profiles/personal/.claude.json"; do
-    printf '{"oauthAccount":{"accountUuid":"fixture-shared"}}' > "$f"
-done
-printf '{"oauthAccount":{"accountUuid":"fixture-agents"}}' > "$HOME/.claude-profiles/agents/.claude.json"
+tag_accounts
 out=$(render '"effort":{"level":"high"},')
-check "shows a shared login once, from its newest record" "$out" "$DEFAULT ▁▄" yes
-check "drops the older record of a shared login" "$out" "$PERSONAL" no
-check "puts the current account first, then a separator, then the others" "$out" "$AGENTS ▁▄ │ $DEFAULT ▁▄" yes
+check "shows a shared login once, named after its profile" "$out" "│ $PERSONAL ▁▄" yes
+check "drops the default dir's duplicate of a shared login" "$out" "$DEFAULT" no
+check "puts the current account first, then a separator, then the others" "$out" "$AGENTS ▁▄ │ $PERSONAL ▁▄" yes
 
-out=$(CLAUDE_CONFIG_DIR="$HOME/.claude-profiles/personal" render_with_dir '')
-check "treats the merged account as current when any member is the current dir" "$out" "$PERSONAL ▁▄ │ $AGENTS ▁▄" yes
-check "does not list the current merged account among the others" "$out" "$DEFAULT" no
+out=$(CLAUDE_CONFIG_DIR="$HOME/.claude" render_with_dir '')
+check "pairs the default glyph with the profile it logs into" "$out" "$DEFAULT$PERSONAL ▁▄" yes
+check "does not list the current merged account among the others" "$out" "│*$PERSONAL" no
 
-# A truncated identity file (caught mid-write) must not blank the usage section.
-printf '{"oauthAccount":{"accountUu' > "$HOME/.claude.json"
+# A record from before account hashing is its own account.
+write_cache true
 out=$(render '"effort":{"level":"high"},')
-check "still shows usage when an identity file is truncated" "$out" "$AGENTS ▁▄ │" yes
-check "keeps a dir with a truncated identity file as its own account" "$out" "$DEFAULT ▁▄" yes
-check "keeps the other dir of the shared login too" "$out" "$PERSONAL ▁▄" yes
+check "keeps an untagged dir as its own account" "$out" "$DEFAULT ▁▄" yes
+check "keeps the other untagged dir too" "$out" "$PERSONAL ▁▄" yes
 
 exit $((FAILS > 0))
