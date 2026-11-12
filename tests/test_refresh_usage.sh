@@ -6,9 +6,9 @@ SCRIPT="$ROOT/private_dot_claude/scripts/executable_refresh-usage.sh"
 FAILS=0
 TMP=$(cd "$(mktemp -d)" && pwd -P)
 trap 'rm -rf "$TMP"' EXIT
-mkdir -p "$TMP/profiles/recent" "$TMP/profiles/good" "$TMP/profiles/broken" "$TMP/profiles/crashy"
-export REFRESH_PROFILES_DIR="$TMP/profiles" REFRESH_CACHE_FILE="$TMP/usage.json" \
-    REFRESH_LOG_FILE="$TMP/logs/refresh.log" REFRESH_RATE_LIMITS="$TMP/stub.sh" REFRESH_WAIT_SECONDS=1
+mkdir -p "$TMP/profiles/recent" "$TMP/profiles/good" "$TMP/profiles/broken" "$TMP/profiles/crashy" "$TMP/default"
+export REFRESH_PROFILES_DIR="$TMP/profiles" REFRESH_CACHE_FILE="$TMP/usage.json" REFRESH_DEFAULT_DIR="$TMP/default" \
+    REFRESH_LOG_FILE="$TMP/logs/refresh.log" REFRESH_RATE_LIMITS="$TMP/stub.sh"
 
 # Stub: "good" writes a fresh record (plus one already 30s old for "recent"), "crashy" exits non-zero, "broken" does nothing.
 cat > "$TMP/stub.sh" <<STUB
