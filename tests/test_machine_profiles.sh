@@ -57,6 +57,7 @@ expected = set("""
 .local/share/kwin-mcp
 .claude/scripts/kwin-session-start-guard.py
 install-kwin-mcp.sh
+.local/bin/basement-suite
 .local/bin/tmp-inode-alarm
 .config/systemd/user/tmp-inode-alarm.service
 .config/systemd/user/tmp-inode-alarm.timer
