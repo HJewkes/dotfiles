@@ -70,8 +70,14 @@ check_identity() {
     log_failure "$name" "identity mismatch: .claude.json names a different account than the token"
 }
 
+# A profile with neither a Mac login nor a remote source has nothing to poll.
+has_usage_source() {
+    [[ -f "$1/usage-remote" ]] || security find-generic-password -s "$(keychain_service "$1")" >/dev/null 2>&1
+}
+
 refresh_profile() {
     local dir="$1" id_file="$2" name="$3" rc age
+    has_usage_source "$dir" || return 0
     renew_if_expiring "$dir"
     CLAUDE_CONFIG_DIR="$dir" "$RATE_LIMITS" --refresh >/dev/null 2>&1
     rc=$?
