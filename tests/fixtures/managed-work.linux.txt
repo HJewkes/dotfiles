@@ -25,8 +25,8 @@
 .config/systemd/user/claude-trust-sync.service
 .config/systemd/user/claude-trust-sync.timer
 .config/systemd/user/docker.service
-.config/systemd/user/node-compile-cache-weekly.service
-.config/systemd/user/node-compile-cache-weekly.timer
+.config/systemd/user/node-compile-cache-daily.service
+.config/systemd/user/node-compile-cache-daily.timer
 .config/systemd/user/titan-console.service
 .config/systemd/user/tmp-compile-cache-sweep.service
 .config/systemd/user/tmp-compile-cache-sweep.timer
@@ -41,6 +41,7 @@
 .local/bin/claude-notify
 .local/bin/clean-gone-branches
 .local/bin/dockerd-rootless.sh
+.local/bin/node-compile-cache-gc
 .secrets.zsh.age
 .zsh/aliases.zsh
 .zsh/claude.zsh

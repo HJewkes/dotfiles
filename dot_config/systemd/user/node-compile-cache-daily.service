@@ -1,0 +1,9 @@
+[Unit]
+Description=Bound ~/.cache/node-compile-cache: drop entries unread for 3 days, wipe if still over 5G (disk audit 2026-11-15)
+
+[Service]
+Type=oneshot
+Nice=19
+IOSchedulingClass=idle
+TimeoutStartSec=2h
+ExecStart=%h/.local/bin/node-compile-cache-gc

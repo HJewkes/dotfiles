@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Disk audit 2026-11-15, prevention item 3: put a question in the owner's queue when / has less than 200G available.
+# Install as ~/.local/bin/root-avail-alarm (dotfiles: dot_local/bin/executable_root-avail-alarm).
+# Channel: `agent-chat ask` under the service label basement-disk-alarm. It is durable and needs no live session.
+set -uo pipefail
+
+THRESHOLD_G=${ROOT_AVAIL_ALARM_G:-200}
+REPEAT_SECONDS=21600
+LABEL=basement-disk-alarm
+STATE="$HOME/.local/state/root-avail-alarm"
+mkdir -p "$STATE"
+
+avail=$(df -B1G --output=avail / | tail -1 | tr -dc 0-9)
+if [ "$avail" -ge "$THRESHOLD_G" ]; then rm -f "$STATE/sent"; exit 0; fi
+
+now=$(date +%s)
+sent=$(cat "$STATE/sent" 2>/dev/null || echo 0)
+[ $((now - sent)) -lt "$REPEAT_SECONDS" ] && exit 0
+
+growth=$(timeout 900 nice -n 19 ionice -c3 find "$HOME/.cache" "$HOME/render-jobs" "$HOME/suite-runs" \
+    "$HOME"/projects/*/.worktrees "$HOME/projects/_review" -xdev -type f -newermt '-24 hours' -printf '%s %h\n' 2>/dev/null |
+  awk '{n=split($2,a,"/"); k=a[4]"/"a[5]; if(n>5)k=k"/"a[6]; S[k]+=$1} END{for(k in S) if(S[k]>1073741824) printf "%.1fG %s\n", S[k]/1073741824, k}' |
+  sort -rn | head -8)
+
+text=$(printf 'Root fs on basement has %sG available (alarm under %sG). Top 24 h writers (file bytes by path):\n%s\nRecipe and validators: ~/projects/_review/disk-exec-2026-11-15/README.md. Repeats every 6 h while it stays low.' \
+  "$avail" "$THRESHOLD_G" "${growth:-(growth scan empty or timed out)}")
+
+if printf '%s' "$text" | agent-chat ask --as "$LABEL" --text-stdin --kind decision \
+    --header "basement / has ${avail}G free (< ${THRESHOLD_G}G)" \
+    --option acknowledged --default acknowledged --door two-way --blocking continue \
+    --on-no-answer "re-asked every 6 h while / stays under ${THRESHOLD_G}G" >"$STATE/last-msgid"; then
+  echo "$now" > "$STATE/sent"
+else
+  echo "root-avail-alarm: agent-chat ask failed; will retry next tick" >&2
+  exit 1
+fi

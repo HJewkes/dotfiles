@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Disk audit 2026-11-15, prevention item 6: weekly eviction for tool caches that never evict on their own.
+# Install as ~/.local/bin/cache-evict-weekly. Each step runs even if an earlier one fails; the exit code is 1 if any failed.
+set -uo pipefail
+TURBO="$HOME/projects/titan-platform/.turbo/cache"
+rc=0
+"$HOME/.local/bin/uv" cache prune || rc=1
+"$HOME/.local/share/mise/shims/npm" cache verify || rc=1
+if [ -d "$TURBO" ] && [ "$(realpath "$TURBO")" = "$TURBO" ]; then
+  find "$TURBO" -maxdepth 1 -type f -mtime +14 -delete || rc=1
+fi
+exit "$rc"

@@ -1,0 +1,7 @@
+[Unit]
+Description=Ask the owner when / has under 200G available (disk audit 2026-11-15)
+
+[Service]
+Type=oneshot
+TimeoutStartSec=20min
+ExecStart=%h/.local/bin/root-avail-alarm

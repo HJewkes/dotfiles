@@ -84,6 +84,13 @@ install-kwin-mcp.sh
 {{ if not (has "factory-host" $roles) }}
 # The suite runner serves agents on basement only (BS-44).
 .local/bin/basement-suite
+# Disk audit 2026-11-15: the root-space alarm and weekly cache eviction run on basement only.
+.local/bin/root-avail-alarm
+.config/systemd/user/root-avail-alarm.service
+.config/systemd/user/root-avail-alarm.timer
+.local/bin/cache-evict-weekly
+.config/systemd/user/cache-evict-weekly.service
+.config/systemd/user/cache-evict-weekly.timer
 # The tmp inode alarm runs on basement only.
 .local/bin/tmp-inode-alarm
 .config/systemd/user/tmp-inode-alarm.service

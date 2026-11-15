@@ -129,7 +129,9 @@ prepare() {
   RUN_TMP="$RUN_TMP_ROOT/run-$$"
   mkdir -p "$RUN_TMP"
   export TMPDIR=$RUN_TMP TMP=$RUN_TMP TEMP=$RUN_TMP
-  export NODE_COMPILE_CACHE=${NODE_COMPILE_CACHE:-$HOME/.cache/node-compile-cache}
+  # Each run is a fresh checkout path, so cached entries are never reused (disk audit 2026-11-15).
+  unset NODE_COMPILE_CACHE
+  export NODE_DISABLE_COMPILE_CACHE=1
   RUN_REF="refs/suite-runs/$AGENT-$stamp"
   step fetch git -C "$SRC" fetch -q origin "+refs/heads/$BRANCH:$RUN_REF"
   step worktree git -C "$SRC" worktree add -q --detach "$WT" "$RUN_REF"

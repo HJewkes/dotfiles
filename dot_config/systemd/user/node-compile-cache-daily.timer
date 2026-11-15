@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily bound on ~/.cache/node-compile-cache
+
+[Timer]
+OnCalendar=*-*-* 04:15
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
