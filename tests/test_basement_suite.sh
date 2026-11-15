@@ -114,6 +114,7 @@ mkdir -p "$TMP/.cache/basement-suite/run-$gone/vt-fake" "$RUNS/other/titan-platf
 touch "$RUNS/other/titan-platform-$stamp-$gone/.git" "$RUNS/other/titan-platform-$stamp-$gone.log"
 mkdir -p "$RUNS/other/titan-platform-$stamp-$$" "$TMP/.cache/basement-suite/run-$$" "$RUNS/other/titan-design-$stamp-$gone"
 mkdir -p "$TMP/legacy/bs-$gone" "$TMP/legacy/bs-$$" "$TMP/legacy/bs-notes"
+touch -d '7 hours ago' "$RUNS"/other/*-"$stamp"-*(/)
 reset_marks
 suite >/dev/null
 check "a dead run's dir is swept at start" '[[ ! -e $TMP/.cache/basement-suite/run-$gone ]]'
