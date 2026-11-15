@@ -14,6 +14,8 @@ declare -A SRC_DIRS=([royal_road_player]="$HOME/suite-mirrors/royal_road_player"
 VENV_CACHE="$HOME/.cache/basement-suite/venvs"
 RUN_TMP_ROOT="$HOME/.cache/basement-suite"
 LEGACY_TMP_ROOT=${BASEMENT_SUITE_LEGACY_TMP:-/tmp}
+STALE_HOURS=${BASEMENT_SUITE_STALE_HOURS:-6}
+[[ $STALE_HOURS =~ ^[0-9]+$ ]] || STALE_HOURS=6
 PYTHON_VERSION=3.11
 RUNS_ROOT="$HOME/suite-runs"
 SLOT_DIR="${XDG_RUNTIME_DIR:-/tmp}/basement-suite"
@@ -85,23 +87,48 @@ on_signal() {
   exit 130
 }
 
-run_is_dead() {
-  local pid=${1##*-}
-  [[ -d $1 && $pid =~ ^[0-9]+$ && ! -d /proc/$pid ]]
+pid_is_dead() {
+  [[ $1 =~ ^[0-9]+$ && ! -d /proc/$1 ]]
 }
 
-# SIGKILL skips cleanup, so each run reaps what dead ones left. bs-* is where runs before BS-44 kept RUN_TMP.
+run_is_dead() {
+  [[ -d $1 ]] && pid_is_dead "${1##*-}"
+}
+
+# SIGKILL skips cleanup (OOM, timeout -s KILL), so each run reaps what dead ones left before taking a slot.
 sweep_dead_runs() {
+  sweep_dead_tmp
+  sweep_dead_trees
+  sweep_dead_refs
+}
+
+# bs-* is where runs before BS-44 kept RUN_TMP.
+sweep_dead_tmp() {
   local dir
   for dir in "$RUN_TMP_ROOT"/run-* "$LEGACY_TMP_ROOT"/bs-*; do
     run_is_dead "$dir" && rm -rf "$dir"
   done
-  for dir in "$RUNS_ROOT"/*/"$REPO"-[0-9]*-[0-9]*-[0-9]*; do
-    run_is_dead "$dir" || continue
-    # git refuses a tree whose .git an interrupted remove already took.
-    git -C "$SRC" worktree remove --force "$dir" >/dev/null 2>&1 || rm -rf "$dir"
-  done
+}
+
+# The age gate spares a run whose pid this host cannot see. rm plus one prune, not a git call per tree.
+sweep_dead_trees() {
+  local dir
+  find "$RUNS_ROOT" -mindepth 2 -maxdepth 2 -type d -name "$REPO-[0-9]*-[0-9]*-[0-9]*" \
+    -mmin +$((STALE_HOURS * 60)) -print0 2>/dev/null |
+    while IFS= read -r -d '' dir; do run_is_dead "$dir" && rm -rf "$dir"; done
   git -C "$SRC" worktree prune >/dev/null 2>&1
+}
+
+# Refs are refs/suite-runs/<agent>-<date>-<time>-<pid>. A run fetches its ref before it adds its tree,
+# so a ref with no tree is stale only once its pid is dead.
+sweep_dead_refs() {
+  local ref name agent
+  git -C "$SRC" for-each-ref --format='%(refname)' refs/suite-runs/ 2>/dev/null |
+    while IFS= read -r ref; do
+      name=${ref#refs/suite-runs/}
+      agent=${name%-*-*-*}
+      [[ ! -e $RUNS_ROOT/$agent/$REPO-${name#"$agent"-} ]] && pid_is_dead "${name##*-}" && echo "delete $ref"
+    done | git -C "$SRC" update-ref --stdin >/dev/null 2>&1
 }
 
 step() {
@@ -116,7 +143,6 @@ step() {
 }
 
 prepare() {
-  SRC=${SRC_DIRS[$REPO]:-$HOME/projects/$REPO}
   [[ -d $SRC/.git ]] || gh repo clone "HJewkes/$REPO" "$SRC" -- -q >/dev/null 2>&1 || { echo "clone of $REPO failed" >&2; exit 69; }
   local stamp; stamp=$(date +%Y%m%d-%H%M%S)-$$
   mkdir -p "$RUNS_ROOT/$AGENT"
@@ -124,7 +150,6 @@ prepare() {
   LOG="$RUNS_ROOT/$AGENT/$REPO-$stamp.log"
   trap cleanup EXIT
   trap on_signal INT TERM HUP
-  sweep_dead_runs
   # On disk, per-run and removed at exit: leaked fixtures filled the 1M-inode /tmp tmpfs.
   RUN_TMP="$RUN_TMP_ROOT/run-$$"
   mkdir -p "$RUN_TMP"
@@ -184,6 +209,8 @@ summarize() {
 main() {
   parse_args "$@"
   refuse_if_maintenance
+  SRC=${SRC_DIRS[$REPO]:-$HOME/projects/$REPO}
+  sweep_dead_runs
   take_slot
   prepare
   SECONDS=0
