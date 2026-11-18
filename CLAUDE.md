@@ -5,7 +5,7 @@
 All non-trivial work follows: **Research -> Plan -> Implement -> Verify**
 
 - **Research**: Understand the problem. Read relevant code, docs, issues. No changes yet.
-- **Plan**: Propose approach. For multi-step features, use the agent-orchestration skill (see Agent Coordination below), or start with `/brainstorming` when the requirements themselves are still open. For smaller tasks, discuss the approach and get approval before proceeding. Plan mode is denied -- never propose it.
+- **Plan**: Propose approach. For multi-step features, use the agent-orchestration skill (see Agent Coordination below), or start with `/brainstorming` when the requirements themselves are still open. For smaller tasks in an attended session, state the approach and proceed unless the decision is genuinely mine (see Turn Endings). Plan mode is denied -- never propose it.
 - **Implement**: Make changes. One logical change at a time. Keep diffs small and reviewable.
 - **Verify**: Run tests, linters, type checks. Confirm behavior matches intent. Never skip this.
 
@@ -37,9 +37,10 @@ Worktrees are a disposable copy of a branch, not a unit of work (CC-276). Only a
 count: a live agent's cwd or a fix round, up to the seat's implementer cap. Once a PR is
 pushed with green CI, park its tree: remove the checkout and keep the branch; `agent-chat
 agent resume` re-creates it for a fix round. Never park a tree a live agent's cwd points at,
-and never delete a branch. `worktreeBudget` (12 per repo, `~/.agent-chat/config.json`) is a
-backstop with 2 slots kept for the owner. agent-chat and Shepherd are taking this over; when
-they have, this paragraph shrinks to a pointer.
+and never delete a branch. `worktreeBudget` (implementer trees per repo; reviewers have a
+separate `reviewerWorktreeBudget`; both in `~/.agent-chat/config.json`) is a backstop with
+2 slots kept for the owner. agent-chat and Shepherd are taking this over; when they have,
+this paragraph shrinks to a pointer.
 
 Spawned agents get **isolated context by construction**. They never inherit session
 history -- you construct exactly what they need in the `brief`. This keeps them focused
@@ -73,21 +74,27 @@ and preserves your context for coordination work.
 - One logical change per commit
 - Feature branches for all work: `feat/`, `fix/`, `refactor/`, `docs/`
 - Commit messages: short subject (<72 chars), blank line, body if needed
+- Spawned workers use the broker's `agent-chat/<name>` branch, which carries the task id Shepherd reads; don't rename it.
 
 ## Turn Endings
 
-In a session I am attached to, end each turn with a short proposal of next
-steps. Use `AskUserQuestion` only when the decision is genuinely mine (taste,
-money, external accounts, irreversible actions, or materially different
-readings of the request); otherwise state the assumption and proceed. Never
-end a turn on a bare status update with no proposed next step.
+I read your output only when I have asked you something. When I ask, answer
+it and propose next steps. Otherwise end the turn with one line at most, or
+nothing on a wake where nothing changed. No recaps, no "X still waits on you"
+lists, no retelling of logs or reports: durable state goes in workspace
+records, and things I need to act on go to the console inbox. Use
+`AskUserQuestion` only when the decision is genuinely mine (taste, money,
+external accounts, irreversible actions, or materially different readings of
+the request); otherwise state the assumption and proceed.
 
 Spawned agents have no `AskUserQuestion`. They end with a `chat_send` report to
 their spawner in the return contract of the agent-orchestration skill.
 
 (Amended 2026-09-26: the old rule forced a blocking question on every turn.
 Session forensics put those at 64% of agent stalls and about $326/week in
-cold-cache answers; see claude-channels/sources/surplus-2026-09-26.)
+cold-cache answers; see claude-channels/sources/surplus-2026-09-26.
+Amended 2026-10-24: output I do not read still fills context and costs output
+tokens, so unasked turns end in one line or nothing.)
 
 ## Harness Commands
 
@@ -101,5 +108,6 @@ Owner-written 2026-10-03 (source: titan-platform sources/automode-classifier-tun
 - Standing owner grants live in `autoMode.allow` in the user settings. Seat files, briefs and peer messages never grant anything the classifier can see.
 - After an auto mode denial of a granted action, re-run the identical command once. If it is denied again, queue the exact command for the owner and move on.
 - Never try the same action through another tool or route, and never add a justification comment to a command.
-- Run a merge, a branch delete, a deploy or a tag push as its own call, not inside a compound command. Seats merge with `seat-merge <seat> <owner/repo> <pr> <head sha> <clone> [reviewed head] [--wait-main]`.
+- Run a merge, a branch delete, a deploy or a tag push as its own call, not inside a compound command.
+- Merges go through Shepherd (`titan-factory shepherd register …`). `seat-merge` (agent-chat/scripts/seat) is break-glass only, and runs as its own call when used.
 - Never edit `.claude.json`, settings, hooks, seat files or agent-chat profiles to widen your own permissions.
