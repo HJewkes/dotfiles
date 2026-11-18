@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Disk audit 2026-11-15, prevention item 1(b): daily bound on Node's compile cache.
+# Install as ~/.local/bin/node-compile-cache-gc (dotfiles: dot_local/bin/executable_node-compile-cache-gc).
+# Deletes entries not read for more than 3 days, then wipes the whole cache if it is still over 5G.
+# A wipe is safe: Node rebuilds entries on demand, and a running node that finds the dir gone just skips its write.
+set -uo pipefail
+
+DIR="$HOME/.cache/node-compile-cache"
+CAP_KIB=$(( ${NODE_COMPILE_CACHE_CAP_G:-5} * 1024 * 1024 ))
+
+# Finish any wipe an earlier run did not complete.
+for old in "$DIR".wipe-*; do [ -d "$old" ] && rm -rf -- "$old"; done
+[ -d "$DIR" ] || exit 0
+
+find "$DIR" -xdev -type f -amin +4320 -delete
+find "$DIR" -xdev -mindepth 1 -type d -empty -delete
+used=$(du -sxk "$DIR" | cut -f1)
+echo "node-compile-cache: ${used} KiB after the 3-day atime sweep (cap ${CAP_KIB} KiB)"
+
+if [ "$used" -gt "$CAP_KIB" ]; then
+  trash="$DIR.wipe-$(date +%Y%m%d%H%M%S)"
+  mv -- "$DIR" "$trash" && rm -rf -- "$trash"
+  echo "node-compile-cache: over the cap, wiped"
+fi

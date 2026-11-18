@@ -1,0 +1,9 @@
+[Unit]
+Description=Weekly tool-cache eviction: uv prune, npm verify, turbo files older than 14 days (disk audit 2026-11-15)
+
+[Service]
+Type=oneshot
+Nice=19
+IOSchedulingClass=idle
+TimeoutStartSec=1h
+ExecStart=%h/.local/bin/cache-evict-weekly
